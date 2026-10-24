@@ -63,6 +63,7 @@ ROOT = pathlib.Path(__file__).resolve().parent
 WEB = ROOT / "web"
 USER_DATA = ROOT.parent / ".webview2"
 HOST = "robot.local"
+LEVEL_FALL_DB_S = 30.0
 
 XAML = """
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
@@ -141,6 +142,7 @@ class App(Application, IXamlMetadataProvider):
         self.tick_gaps: list[float] = []
         self.shown_pending: list | None = None
         self.latencies: list[float] = []
+        self.level_db = -120.0
 
     # ----- start up -----------------------------------------------------------
 
@@ -284,29 +286,31 @@ class App(Application, IXamlMetadataProvider):
         dt, self.last_tick = min(now - self.last_tick, 0.1), now
         self.robot.step(dt)
         s = self.robot.state()
-        if self.scene_ready.is_set():
-            self.webview.core_webview2.post_web_message_as_json(
-                json.dumps(
-                    {
-                        "pose": {
-                            "x": s.x,
-                            "y": s.y,
-                            "heading": s.heading,
-                            "left": s.left_angle,
-                            "right": s.right_angle,
-                            "speed": s.speed,
-                        }
-                    }
-                )
-            )
+        self.post_to_scene(
+            {
+                "pose": {
+                    "x": s.x,
+                    "y": s.y,
+                    "heading": s.heading,
+                    "left": s.left_angle,
+                    "right": s.right_angle,
+                    "speed": s.speed,
+                }
+            }
+        )
         pending = ([s.current] if s.current else []) + s.queued
         if pending != self.shown_pending:  # only when it changes, not 60 times a second
             self.shown_pending = pending
             self.queue_text.text = ("Now: " + describe(pending)) if pending else "Waiting for a command"
         seg = self.listener.segmenter
         if seg is not None:
-            bar = "█" * max(0, min(12, int((seg.level_db + 70) / 4)))
-            self.level.text = f"{'● ' if seg.speaking else '  '}{bar:<12} {seg.level_db:5.0f} dB"
+            # Like a VU meter: up at once, back down at 30 dB/s, rather than
+            # flickering with every 30 ms frame.
+            self.level_db = max(seg.level_db, self.level_db - LEVEL_FALL_DB_S * dt)
+            bar = "█" * max(0, min(12, int((self.level_db + 70) / 4)))
+            text = f"{'● ' if seg.speaking else '  '}{bar:<12} {self.level_db:5.0f} dB"
+            if text != self.level.text:
+                self.level.text = text
 
     # ----- events -------------------------------------------------------------
 
@@ -378,15 +382,21 @@ class App(Application, IXamlMetadataProvider):
 
     def reset(self) -> None:
         self.robot.reset()
-        if self.scene_ready.is_set():
-            self.webview.core_webview2.post_web_message_as_json('{"reset": true}')
+        self.post_to_scene({"reset": True})
 
     def toggle_camera(self) -> None:
         self.chase = not self.chase
-        if self.scene_ready.is_set():
-            self.webview.core_webview2.post_web_message_as_json(
-                json.dumps({"camera": "chase" if self.chase else "top"})
-            )
+        self.post_to_scene({"camera": "chase" if self.chase else "top"})
+
+    def post_to_scene(self, message: dict) -> None:
+        if not self.scene_ready.is_set():
+            return
+        try:
+            self.webview.core_webview2.post_web_message_as_json(json.dumps(message))
+        except OSError:
+            # The WebView2 closes as the window does, before the window's closed
+            # event; a frame drawn in between mustn't take the app down with it.
+            self.scene_ready.clear()
 
     def set_status(self, text: str) -> None:
         self.status.text = text
