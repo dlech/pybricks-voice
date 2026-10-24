@@ -21,14 +21,13 @@ import threading
 import time
 import traceback
 import wave
-from typing import Callable
+from collections.abc import Callable
+from typing import override
 from xml.sax.saxutils import quoteattr
 
 import numpy as np
-from typing_extensions import override
 from winrt.microsoft.ui.xaml import (
     Application,
-    ApplicationInitializationCallbackParams,
     FrameworkElement,
     LaunchActivatedEventArgs,
     UIElement,
@@ -262,7 +261,9 @@ class App(Application, IXamlMetadataProvider):
             try:
                 asyncio.run(self.microphone.start())
             except Exception as e:
-                post(lambda: self.set_status(f"no microphone: {e}"))
+                # Python deletes e when the except block ends, before the UI thread runs this.
+                message = f"no microphone: {e}"
+                post(lambda: self.set_status(message))
 
         threading.Thread(target=open_microphone, name="microphone", daemon=True).start()
 
@@ -299,9 +300,20 @@ class App(Application, IXamlMetadataProvider):
         self.robot.step(dt)
         s = self.robot.state()
         if self.scene_ready:
-            self.webview.core_webview2.post_web_message_as_json(json.dumps({"pose": {
-                "x": s.x, "y": s.y, "heading": s.heading, "left": s.left_angle,
-                "right": s.right_angle, "speed": s.speed}}))
+            self.webview.core_webview2.post_web_message_as_json(
+                json.dumps(
+                    {
+                        "pose": {
+                            "x": s.x,
+                            "y": s.y,
+                            "heading": s.heading,
+                            "left": s.left_angle,
+                            "right": s.right_angle,
+                            "speed": s.speed,
+                        }
+                    }
+                )
+            )
         pending = ([s.current] if s.current else []) + s.queued
         if pending != self.shown_pending:  # only when it changes, not 60 times a second
             self.shown_pending = pending
@@ -322,8 +334,10 @@ class App(Application, IXamlMetadataProvider):
         if heard.audio_s:
             self.latencies.append(heard.latency_ms)
             pause_ms = Segmenter.END_MS
-            detail = (f"Whisper {heard.timing.total_ms:.0f} ms on the NPU · "
-                      f"moving {pause_ms + heard.latency_ms:.0f} ms after you stopped")
+            detail = (
+                f"Whisper {heard.timing.total_ms:.0f} ms on the NPU · "
+                f"moving {pause_ms + heard.latency_ms:.0f} ms after you stopped"
+            )
         else:
             detail = "typed"
         self.add_bubble(heard.text, mine=True, detail=detail)
@@ -340,21 +354,28 @@ class App(Application, IXamlMetadataProvider):
     def add_bubble(self, text: str, mine: bool, detail: str | None = None) -> None:
         """A message bubble: yours on the right in the accent colour, the robot's on the left."""
         if mine:
-            look = ('HorizontalAlignment="Right" CornerRadius="16,16,4,16" '
-                    'Background="{ThemeResource AccentFillColorDefaultBrush}"')
+            look = (
+                'HorizontalAlignment="Right" CornerRadius="16,16,4,16" '
+                'Background="{ThemeResource AccentFillColorDefaultBrush}"'
+            )
             fore = 'Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"'
         else:
-            look = ('HorizontalAlignment="Left" CornerRadius="16,16,16,4" BorderThickness="1" '
-                    'Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" '
-                    'BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"')
+            look = (
+                'HorizontalAlignment="Left" CornerRadius="16,16,16,4" BorderThickness="1" '
+                'Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" '
+                'BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"'
+            )
             fore = ""
-        extra = (f'<TextBlock Text={quoteattr(detail)} FontSize="11" Opacity="0.75" TextWrapping="Wrap" {fore}/>'
-                 if detail else "")
+        extra = (
+            f'<TextBlock Text={quoteattr(detail)} FontSize="11" Opacity="0.75" TextWrapping="Wrap" {fore}/>'
+            if detail
+            else ""
+        )
         bubble = XamlReader.load(
             f'<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" {look} '
             f'MaxWidth="290" Padding="12,8,12,8">'
             f'<StackPanel Spacing="2"><TextBlock Text={quoteattr(text)} TextWrapping="Wrap" {fore}/>{extra}'
-            f'</StackPanel></Border>'
+            f"</StackPanel></Border>"
         ).as_(UIElement)
         self.log.children.append(bubble)
         while len(self.log.children) > 100:
@@ -379,7 +400,8 @@ class App(Application, IXamlMetadataProvider):
         self.chase = not self.chase
         if self.scene_ready:
             self.webview.core_webview2.post_web_message_as_json(
-                json.dumps({"camera": "chase" if self.chase else "top"}))
+                json.dumps({"camera": "chase" if self.chase else "top"})
+            )
 
     def set_status(self, text: str) -> None:
         self.status.text = text
@@ -391,13 +413,19 @@ class App(Application, IXamlMetadataProvider):
         self.timer.stop()
         gaps = np.array(self.tick_gaps[30:]) * 1000  # skip start-up
         if len(gaps):
-            print(f"UI timer (16 ms): median gap {np.median(gaps):.1f} ms, p99 {np.percentile(gaps, 99):.1f} ms, "
-                  f"max {gaps.max():.1f} ms, {int((gaps > 50).sum())} gaps over 50 ms", flush=True)
+            print(
+                f"UI timer (16 ms): median gap {np.median(gaps):.1f} ms, p99 {np.percentile(gaps, 99):.1f} ms, "
+                f"max {gaps.max():.1f} ms, {int((gaps > 50).sum())} gaps over 50 ms",
+                flush=True,
+            )
         if self.latencies:
             pause = Segmenter.END_MS
-            print(f"end of speech -> commands: median {pause + np.median(self.latencies):.0f} ms "
-                  f"({pause} ms pause + {np.median(self.latencies):.0f} ms), "
-                  f"max {pause + max(self.latencies):.0f} ms over {len(self.latencies)} utterances", flush=True)
+            print(
+                f"end of speech -> commands: median {pause + np.median(self.latencies):.0f} ms "
+                f"({pause} ms pause + {np.median(self.latencies):.0f} ms), "
+                f"max {pause + max(self.latencies):.0f} ms over {len(self.latencies)} utterances",
+                flush=True,
+            )
         self.microphone.stop()
         self.listener.close()
         self.exit()
@@ -419,12 +447,18 @@ class App(Application, IXamlMetadataProvider):
 
 def main() -> None:
     parser = argparse.ArgumentParser(prog="python -m pybricks_voice")
-    parser.add_argument("--say", action="append", default=[],
-                        help="type a command once the app is up (repeatable), for demos and tests")
+    parser.add_argument(
+        "--say", action="append", default=[], help="type a command once the app is up (repeatable), for demos and tests"
+    )
     parser.add_argument("--screenshot", type=pathlib.Path, help="save the window to this PNG before quitting")
     parser.add_argument("--quit-after", type=float, help="quit after this many seconds")
-    parser.add_argument("--feed-wav", action="append", default=[], type=pathlib.Path,
-                        help="stream a 16 kHz WAV into the listener in real time, as if spoken (repeatable)")
+    parser.add_argument(
+        "--feed-wav",
+        action="append",
+        default=[],
+        type=pathlib.Path,
+        help="stream a 16 kHz WAV into the listener in real time, as if spoken (repeatable)",
+    )
     parser.add_argument("--no-mic", action="store_true", help="don't open the microphone")
     parser.add_argument("--record", type=pathlib.Path, help="save every utterance (WAV + text) to this folder")
     options = parser.parse_args()

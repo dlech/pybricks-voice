@@ -17,12 +17,12 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from check_whisper import synthesize  # noqa: E402
+from check_whisper import synthesize
+from winrt.windows.media.speechsynthesis import SpeechSynthesizer
 
-from pybricks_voice.grammar import parse  # noqa: E402
-from pybricks_voice.robot import Drive, SetSpeed, Stop, Straight, Turn  # noqa: E402
-from pybricks_voice.whisper import SAMPLE_RATE, Whisper  # noqa: E402
-from winrt.windows.media.speechsynthesis import SpeechSynthesizer  # noqa: E402
+from pybricks_voice.grammar import parse
+from pybricks_voice.robot import Drive, SetSpeed, Stop, Straight, Turn
+from pybricks_voice.whisper import SAMPLE_RATE, Whisper
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "out" / "eval"
 
@@ -80,7 +80,7 @@ async def main() -> None:
     files = await make_audio("--resynthesize" in sys.argv)
     whisper = Whisper()
     passed, times = 0, []
-    for (phrase, expected), (path, voice) in zip(CASES, files):
+    for (phrase, expected), (path, voice) in zip(CASES, files, strict=True):
         text, timing = whisper.transcribe(read_wav(path))
         got = parse(text).commands
         ok = got == expected
@@ -89,8 +89,10 @@ async def main() -> None:
         print(f"{'PASS' if ok else 'FAIL'} {timing.total_ms:4.0f} ms  [{voice}] {phrase}")
         if not ok:
             print(f"     heard {text!r} -> {[str(c) for c in got]}, wanted {[str(c) for c in expected]}")
-    print(f"\n{passed}/{len(CASES)} passed (milestone: 18); Whisper median {np.median(times):.0f} ms, "
-          f"max {max(times):.0f} ms")
+    print(
+        f"\n{passed}/{len(CASES)} passed (milestone: 18); Whisper median {np.median(times):.0f} ms, "
+        f"max {max(times):.0f} ms"
+    )
 
 
 if __name__ == "__main__":

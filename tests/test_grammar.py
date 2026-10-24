@@ -21,8 +21,9 @@ class TestNumbers(unittest.TestCase):
 
 class TestDescribe(unittest.TestCase):
     def test_plain_words(self) -> None:
-        self.assertEqual(describe([Straight(500), Turn(90), Straight(-200)]),
-                         "Forward 50 cm, then turn right 90°, then back 20 cm")
+        self.assertEqual(
+            describe([Straight(500), Turn(90), Straight(-200)]), "Forward 50 cm, then turn right 90°, then back 20 cm"
+        )
         self.assertEqual(describe([Turn(360)] * 3), "Spin right all the way around ×3")
         self.assertEqual(describe([Curve(600, -360)]), "Drive a circle to the left (60 cm radius)")
         self.assertEqual(describe([Curve(500, -30)]), "Curve left 30° (50 cm radius)")
@@ -37,8 +38,9 @@ class TestParse(unittest.TestCase):
         self.assertEqual(result.not_understood, list(not_understood), text)
 
     def test_the_milestone_sentence(self) -> None:
-        self.check("Forward 50 centimeters, turn right 90 degrees, then back 20.",
-                   Straight(500), Turn(90), Straight(-200))
+        self.check(
+            "Forward 50 centimeters, turn right 90 degrees, then back 20.", Straight(500), Turn(90), Straight(-200)
+        )
 
     def test_distances_and_units(self) -> None:
         self.check("Go forward 30 cm.", Straight(300))
@@ -132,10 +134,8 @@ class TestParse(unittest.TestCase):
         self.check("Slow down a bit.", SetSpeed(1 / 1.5))
 
     def test_chains(self) -> None:
-        self.check("Forward 1 meter and then turn left and then forward 50.",
-                   Straight(1000), Turn(-90), Straight(500))
-        self.check("Turn right. Forward 10 centimeters. Turn left.",
-                   Turn(90), Straight(100), Turn(-90))
+        self.check("Forward 1 meter and then turn left and then forward 50.", Straight(1000), Turn(-90), Straight(500))
+        self.check("Turn right. Forward 10 centimeters. Turn left.", Turn(90), Straight(100), Turn(-90))
 
     def test_not_understood_is_reported(self) -> None:
         self.check("Forward 20, do a little dance", Straight(200), not_understood=["do a little dance"])

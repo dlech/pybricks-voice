@@ -32,8 +32,34 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pillow",  # --screenshot
+    "pyright>=1.1.414",
+    "ruff>=0.17.2",
 ]
 
 [tool.uv]
 # An app, not a library: run it from the checkout.
 package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E", "W",  # pycodestyle
+    "F",       # pyflakes
+    "I",       # isort
+    "UP",      # pyupgrade
+    "B",       # bugbear
+    "SIM",     # simplify
+    "RUF",     # ruff's own
+]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # ×, °, “” and … are meant in user-facing text and comments
+]
+
+[tool.pyright]
+pythonVersion = "3.14"
+typeCheckingMode = "standard"
+include = ["pybricks_voice", "tests", "tools"]
+extraPaths = ["tools"]

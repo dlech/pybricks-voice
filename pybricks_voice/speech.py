@@ -15,16 +15,16 @@ import threading
 import time
 import wave
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 import numpy as np
 
 from .grammar import Parse, parse
 from .whisper import SAMPLE_RATE, Timing, Whisper
 
-
 # ----- voice activity ------------------------------------------------------
+
 
 class Segmenter:
     """Cuts a stream of samples into utterances.
@@ -111,6 +111,7 @@ def resample(audio: np.ndarray, rate: int, target: int = SAMPLE_RATE) -> np.ndar
 
 # ----- microphone ----------------------------------------------------------
 
+
 class Microphone:
     """The default capture device through AudioGraph, as mono float32."""
 
@@ -193,6 +194,7 @@ def is_noise(text: str) -> bool:
     words = " ".join(words.split())
     return not words or words in _FILLERS or all(w in _FILLERS for w in words.split())
 
+
 @dataclass
 class Heard:
     text: str
@@ -236,7 +238,9 @@ class Listener:
     def _record(self, audio: np.ndarray, text: str) -> None:
         level = 20 * np.log10(np.sqrt(np.mean(audio * audio)) + 1e-9)
         peak = 20 * np.log10(np.abs(audio).max() + 1e-9)
-        print(f"heard {len(audio) / SAMPLE_RATE:4.1f} s, rms {level:5.1f} / peak {peak:5.1f} dBFS: {text!r}", flush=True)
+        print(
+            f"heard {len(audio) / SAMPLE_RATE:4.1f} s, rms {level:5.1f} / peak {peak:5.1f} dBFS: {text!r}", flush=True
+        )
         if self.record_dir is None:
             return
         self.record_dir.mkdir(parents=True, exist_ok=True)
@@ -261,5 +265,4 @@ class Listener:
             text, timing = whisper.transcribe(audio16)
             self._record(audio16, text)
             if not is_noise(text):
-                self.on_heard(Heard(text, parse(text), len(audio) / rate, timing,
-                                    (time.perf_counter() - ended) * 1000))
+                self.on_heard(Heard(text, parse(text), len(audio) / rate, timing, (time.perf_counter() - ended) * 1000))

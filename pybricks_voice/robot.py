@@ -13,7 +13,6 @@ turn() is.
 from __future__ import annotations
 
 import math
-from typing import Union
 import threading
 from collections import deque
 from dataclasses import dataclass, field
@@ -85,7 +84,7 @@ class SetSpeed:
         return f"speed ×{self.factor:g}"
 
 
-Command = Union[Straight, Turn, Curve, Drive, Stop, SetSpeed, Home]
+Command = Straight | Turn | Curve | Drive | Stop | SetSpeed | Home
 
 
 @dataclass
@@ -172,8 +171,18 @@ class SimRobot:
     def state(self) -> State:
         with self._lock:
             s = self._state
-            return State(s.x, s.y, s.heading, s.speed, s.turn_rate, s.left_angle, s.right_angle,
-                         s.distance, self._current, list(self._queue))
+            return State(
+                s.x,
+                s.y,
+                s.heading,
+                s.speed,
+                s.turn_rate,
+                s.left_angle,
+                s.right_angle,
+                s.distance,
+                self._current,
+                list(self._queue),
+            )
 
     # ----- simulation ------------------------------------------------------
 
@@ -204,8 +213,11 @@ class SimRobot:
         if self._current is None and self._queue:
             self._current = self._queue.popleft()
             c = self._current
-            self._remaining = abs(c.distance) if isinstance(c, Straight) else (
-                abs(c.angle) if isinstance(c, (Turn, Curve)) else c.duration if isinstance(c, Drive) else 0.0)
+            self._remaining = (
+                abs(c.distance)
+                if isinstance(c, Straight)
+                else (abs(c.angle) if isinstance(c, (Turn, Curve)) else c.duration if isinstance(c, Drive) else 0.0)
+            )
 
         c = self._current
         speed_target = turn_target = 0.0
@@ -216,8 +228,9 @@ class SimRobot:
             radius = abs(c.radius)
             w_cap = min(wmax, vmax / (radius * radians_per_degree))
             reachable = math.sqrt(2 * lim.turn_acceleration * self._remaining)
-            s.turn_rate = _approach(s.turn_rate, math.copysign(min(w_cap, reachable), c.angle),
-                                    lim.turn_acceleration * dt)
+            s.turn_rate = _approach(
+                s.turn_rate, math.copysign(min(w_cap, reachable), c.angle), lim.turn_acceleration * dt
+            )
             rotate = math.copysign(min(abs(s.turn_rate * dt), self._remaining), c.angle)
             s.speed = math.copysign(abs(s.turn_rate) * radians_per_degree * radius, c.radius)
             self._remaining -= abs(rotate)
@@ -254,9 +267,9 @@ class SimRobot:
         self._advance(move, rotate)
 
         done = (
-            isinstance(c, (Straight, Turn)) and self._remaining <= 1e-6
-            or isinstance(c, Drive) and self._remaining <= 0
-            or isinstance(c, Stop) and s.speed == 0 and s.turn_rate == 0
+            (isinstance(c, (Straight, Turn)) and self._remaining <= 1e-6)
+            or (isinstance(c, Drive) and self._remaining <= 0)
+            or (isinstance(c, Stop) and s.speed == 0 and s.turn_rate == 0)
         )
         if done:
             if isinstance(c, (Straight, Turn)):

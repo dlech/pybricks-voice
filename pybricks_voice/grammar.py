@@ -31,11 +31,37 @@ _HOME_RE = re.compile(
     r"|\b(?:go|going|head|drive|come)\s+(?:back\s+)?home\b|\bwhere (?:you|we|it) started\b"
 )
 # Words that can follow a distance without being a unit we don't know.
-_AFTER_NUMBER = {"and", "then", "more", "please", "to", "at", "for", "now", "again", "forward", "forwards",
-                 "back", "backward", "backwards", "ahead", "straight", "the", "left", "right"}
+_AFTER_NUMBER = {
+    "and",
+    "then",
+    "more",
+    "please",
+    "to",
+    "at",
+    "for",
+    "now",
+    "again",
+    "forward",
+    "forwards",
+    "back",
+    "backward",
+    "backwards",
+    "ahead",
+    "straight",
+    "the",
+    "left",
+    "right",
+}
 DEFAULT_ANGLE = 90.0
-CIRCLE_RADIUS_MM = {"small": 150.0, "tight": 150.0, "little": 150.0, "big": 600.0, "large": 600.0,
-                    "wide": 600.0, "huge": 900.0}
+CIRCLE_RADIUS_MM = {
+    "small": 150.0,
+    "tight": 150.0,
+    "little": 150.0,
+    "big": 600.0,
+    "large": 600.0,
+    "wide": 600.0,
+    "huge": 900.0,
+}
 DEFAULT_CIRCLE_RADIUS_MM = 300.0
 CURVE_RADIUS_MM = 500.0
 VEER_ANGLE = 30.0
@@ -49,19 +75,51 @@ _TOO_FAR = {"mile", "miles", "km", "kilometer", "kilometers", "kilometre", "kilo
 _SOUNDS_LIKE = {"vier": "veer", "steer": "veer", "spun": "spin", "twice": "2 times", "thrice": "3 times"}
 
 EXAMPLES = [
-    "forward 30 centimeters", "back up 10", "turn left", "turn right 45 degrees", "turn around",
-    "spin around twice", "drive in a circle", "make a big circle to the left", "half a circle to the right",
-    "do a figure eight", "drive in a square", "drive a small triangle", "go back to the start", "curve right",
-    "veer left", "drive and turn left at the same time", "spin right for 2 seconds", "faster", "stop",
+    "forward 30 centimeters",
+    "back up 10",
+    "turn left",
+    "turn right 45 degrees",
+    "turn around",
+    "spin around twice",
+    "drive in a circle",
+    "make a big circle to the left",
+    "half a circle to the right",
+    "do a figure eight",
+    "drive in a square",
+    "drive a small triangle",
+    "go back to the start",
+    "curve right",
+    "veer left",
+    "drive and turn left at the same time",
+    "spin right for 2 seconds",
+    "faster",
+    "stop",
 ]
 TIMED_SPEED = 150.0  # mm/s for "drive forward for 2 seconds"
 TIMED_TURN_RATE = 90.0  # deg/s for "spin for 3 seconds"
 
 _UNITS_MM = {
-    "mm": 1.0, "millimeter": 1.0, "millimeters": 1.0, "millimetre": 1.0, "millimetres": 1.0,
-    "cm": 10.0, "centimeter": 10.0, "centimeters": 10.0, "centimetre": 10.0, "centimetres": 10.0,
-    "m": 1000.0, "meter": 1000.0, "meters": 1000.0, "metre": 1000.0, "metres": 1000.0,
-    "in": 25.4, "inch": 25.4, "inches": 25.4, "ft": 304.8, "foot": 304.8, "feet": 304.8,
+    "mm": 1.0,
+    "millimeter": 1.0,
+    "millimeters": 1.0,
+    "millimetre": 1.0,
+    "millimetres": 1.0,
+    "cm": 10.0,
+    "centimeter": 10.0,
+    "centimeters": 10.0,
+    "centimetre": 10.0,
+    "centimetres": 10.0,
+    "m": 1000.0,
+    "meter": 1000.0,
+    "meters": 1000.0,
+    "metre": 1000.0,
+    "metres": 1000.0,
+    "in": 25.4,
+    "inch": 25.4,
+    "inches": 25.4,
+    "ft": 304.8,
+    "foot": 304.8,
+    "feet": 304.8,
 }
 _SECONDS = {"s", "sec", "secs", "second", "seconds"}
 _DEGREES = {"degree", "degrees", "deg", "°"}
@@ -72,12 +130,30 @@ _BACKWARD = {"back", "backward", "backwards", "reverse"}
 _STOP = {"stop", "halt", "freeze", "brake", "wait"}
 
 _ONES = {
-    "zero": 0, "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6,
-    "seven": 7, "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12, "thirteen": 13,
-    "fourteen": 14, "fifteen": 15, "sixteen": 16, "seventeen": 17, "eighteen": 18, "nineteen": 19,
+    "zero": 0,
+    "a": 1,
+    "an": 1,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
 }
-_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70,
-         "eighty": 80, "ninety": 90}
+_TENS = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80, "ninety": 90}
 
 
 @dataclass
@@ -88,7 +164,7 @@ class Parse:
 
 
 def _words_to_numbers(text: str) -> str:
-    """"one hundred twenty five" -> "125", "a half" -> "0.5", "2 0" stays."""
+    """ "one hundred twenty five" -> "125", "a half" -> "0.5", "2 0" stays."""
     words = text.split()
     out: list[str] = []
     i = 0
@@ -102,17 +178,22 @@ def _words_to_numbers(text: str) -> str:
             out.append("0.25")
             i += 1 if w == "quarter" else 2
             continue
-        if w in _TENS or (w in _ONES and w not in ("a", "an")) or (
-            w in ("a", "an") and i + 1 < len(words) and words[i + 1] in ("hundred", "thousand")
+        if (
+            w in _TENS
+            or (w in _ONES and w not in ("a", "an"))
+            or (w in ("a", "an") and i + 1 < len(words) and words[i + 1] in ("hundred", "thousand"))
         ):
             total = current = 0
-            while i < len(words) and (words[i] in _ONES or words[i] in _TENS
-                                      or words[i] in ("hundred", "thousand", "and")):
+            while i < len(words) and (
+                words[i] in _ONES or words[i] in _TENS or words[i] in ("hundred", "thousand", "and")
+            ):
                 x = words[i]
                 if x == "and":
                     # "one hundred and twenty" continues a number; "and" alone ends it.
-                    if not (current or total) or i + 1 >= len(words) or not (
-                        words[i + 1] in _ONES or words[i + 1] in _TENS
+                    if (
+                        not (current or total)
+                        or i + 1 >= len(words)
+                        or not (words[i + 1] in _ONES or words[i + 1] in _TENS)
                     ):
                         break
                 elif x in _ONES:
@@ -143,10 +224,17 @@ def normalize(text: str) -> str:
     text = _words_to_numbers(text)
     # Driving while turning is one arc, not "drive" and then "turn", so say so
     # before the text is split at "and".
-    text = re.sub(r"\b(?:drive|go|move)\s+(?:forward\s+)?(?:and|while)\s+turn(?:ing)?\s+(left|right)"
-                  r"(?:\s+at the same time)?", r"curve \1", text)
-    text = re.sub(r"\bturn(?:ing)?\s+(left|right)\s+(?:while|as you)\s+(?:drive|driving|go|going|move|moving)\b",
-                  r"curve \1", text)
+    text = re.sub(
+        r"\b(?:drive|go|move)\s+(?:forward\s+)?(?:and|while)\s+turn(?:ing)?\s+(left|right)"
+        r"(?:\s+at the same time)?",
+        r"curve \1",
+        text,
+    )
+    text = re.sub(
+        r"\bturn(?:ing)?\s+(left|right)\s+(?:while|as you)\s+(?:drive|driving|go|going|move|moving)\b",
+        r"curve \1",
+        text,
+    )
     text = re.sub(r"\bat the same time\b", "", text)
     return " ".join(text.split())
 
@@ -208,16 +296,24 @@ def parse_segment(segment: str) -> list[Command] | None:
         # A circle one way, then the other.
         return [Curve(radius, sign * 360), Curve(radius, -sign * 360)]
     if words & _CIRCLE:
-        if words & _IN_PLACE and not words & {"drive", "go", "make", "do"} or "in place" in segment:
+        if (words & _IN_PLACE and not words & {"drive", "go", "make", "do"}) or "in place" in segment:
             return [Turn(sign * 360)]
         # "half a circle", "a quarter circle": part of the way around.
-        fraction = value if value is not None and value <= 1 and unit not in _UNITS_MM and "radius" not in words else 1.0
+        fraction = (
+            value if value is not None and value <= 1 and unit not in _UNITS_MM and "radius" not in words else 1.0
+        )
         return [Curve(radius, sign * 360 * fraction)]
     if words & _CURVE:
-        angle = value if value is not None and (unit in _DEGREES or unit is None) else (
-            VEER_ANGLE if words & {"veer", "swerve"} else DEFAULT_ANGLE)
-        radius = 800.0 if words & {"wide", "big", "gentle", "gently"} else (
-            250.0 if words & {"tight", "sharp", "sharply"} else CURVE_RADIUS_MM)
+        angle = (
+            value
+            if value is not None and (unit in _DEGREES or unit is None)
+            else (VEER_ANGLE if words & {"veer", "swerve"} else DEFAULT_ANGLE)
+        )
+        radius = (
+            800.0
+            if words & {"wide", "big", "gentle", "gently"}
+            else (250.0 if words & {"tight", "sharp", "sharply"} else CURVE_RADIUS_MM)
+        )
         return [Curve(-radius if backward else radius, sign * angle)]
 
     if "u turn" in segment or "about face" in segment:
@@ -272,7 +368,9 @@ def describe(commands: list[Command]) -> str:
             case Curve(r, a) if abs(a) == 360:
                 return f"drive {'backwards ' if r < 0 else ''}a circle to the {side(a)} ({abs(r) / 10:g} cm radius)"
             case Curve(r, a) if abs(a) == 180:
-                return f"drive {'backwards ' if r < 0 else ''}half a circle to the {side(a)} ({abs(r) / 10:g} cm radius)"
+                return (
+                    f"drive {'backwards ' if r < 0 else ''}half a circle to the {side(a)} ({abs(r) / 10:g} cm radius)"
+                )
             case Curve(r, a):
                 return f"curve {side(a)}{' backwards' if r < 0 else ''} {abs(a):g}° ({abs(r) / 10:g} cm radius)"
             case Home():
@@ -315,12 +413,67 @@ def suggest(segment: str, count: int = 2) -> list[str]:
     return scored[:count]
 
 
-_PRAISE = {"good", "great", "nice", "awesome", "cool", "amazing", "brilliant", "clever", "smart", "perfect",
-           "excellent", "wonderful", "yay", "bravo"}
+_PRAISE = {
+    "good",
+    "great",
+    "nice",
+    "awesome",
+    "cool",
+    "amazing",
+    "brilliant",
+    "clever",
+    "smart",
+    "perfect",
+    "excellent",
+    "wonderful",
+    "yay",
+    "bravo",
+}
 _CHATTER = _PRAISE | {
-    "no", "yes", "yeah", "ok", "okay", "please", "like", "um", "uh", "hey", "now", "so", "well", "robot", "oh",
-    "and", "thanks", "thank", "you", "again", "my", "wow", "whoa", "oops", "huh", "hmm", "such", "a", "re",
-    "are", "very", "job", "done", "that", "was", "s", "it", "is", "what", "haha", "ha", "lol", "gosh", "dear",
+    "no",
+    "yes",
+    "yeah",
+    "ok",
+    "okay",
+    "please",
+    "like",
+    "um",
+    "uh",
+    "hey",
+    "now",
+    "so",
+    "well",
+    "robot",
+    "oh",
+    "and",
+    "thanks",
+    "thank",
+    "you",
+    "again",
+    "my",
+    "wow",
+    "whoa",
+    "oops",
+    "huh",
+    "hmm",
+    "such",
+    "a",
+    "re",
+    "are",
+    "very",
+    "job",
+    "done",
+    "that",
+    "was",
+    "s",
+    "it",
+    "is",
+    "what",
+    "haha",
+    "ha",
+    "lol",
+    "gosh",
+    "dear",
 }
 
 

@@ -16,10 +16,11 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
-from pybricks_voice.grammar import parse  # noqa: E402
-from pybricks_voice.whisper import SAMPLE_RATE, Whisper  # noqa: E402
-from winrt.windows.media.speechsynthesis import SpeechSynthesizer  # noqa: E402
-from winrt.windows.storage.streams import DataReader  # noqa: E402
+from winrt.windows.media.speechsynthesis import SpeechSynthesizer
+from winrt.windows.storage.streams import DataReader
+
+from pybricks_voice.grammar import parse
+from pybricks_voice.whisper import SAMPLE_RATE, Whisper
 
 PHRASES = [
     "Forward 50 centimeters, turn right 90 degrees, then back 20.",
@@ -55,10 +56,14 @@ async def main() -> None:
         text, timing = whisper.transcribe(audio)
         result = parse(text)
         print(f"\nsaid:  {phrase}  ({len(audio) / SAMPLE_RATE:.1f} s)")
-        print(f"heard: {text}  ({timing.total_ms:.0f} ms: mel {timing.mel_ms:.0f}, "
-              f"encoder {timing.encoder_ms:.0f}, decoder {timing.decoder_ms:.0f} / {timing.steps} steps)")
-        print(f"runs:  {', '.join(map(str, result.commands)) or '-'}"
-              + (f"   not understood: {result.not_understood}" if result.not_understood else ""))
+        print(
+            f"heard: {text}  ({timing.total_ms:.0f} ms: mel {timing.mel_ms:.0f}, "
+            f"encoder {timing.encoder_ms:.0f}, decoder {timing.decoder_ms:.0f} / {timing.steps} steps)"
+        )
+        print(
+            f"runs:  {', '.join(map(str, result.commands)) or '-'}"
+            + (f"   not understood: {result.not_understood}" if result.not_understood else "")
+        )
 
 
 if __name__ == "__main__":

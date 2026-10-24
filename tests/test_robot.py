@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from pybricks_voice.robot import Curve, Drive, Home, SetSpeed, SimRobot, Stop, Straight, Turn
+from pybricks_voice.robot import Curve, Drive, Home, SetSpeed, SimRobot, Straight, Turn
 
 DT = 1 / 120
 

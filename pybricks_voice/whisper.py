@@ -30,9 +30,11 @@ MASK_NEG = -100.0
 
 # ----- features ------------------------------------------------------------
 
+
 @functools.cache
 def mel_filters() -> np.ndarray:
     """librosa.filters.mel(sr=16000, n_fft=400, n_mels=80): Slaney scale and norm."""
+
     def hz_to_mel(f):
         f = np.asarray(f, np.float64)
         return np.where(f >= 1000, 15 + np.log(np.maximum(f, 1e-10) / 1000) / (np.log(6.4) / 27), f / (200 / 3))
@@ -64,10 +66,13 @@ def log_mel(audio: np.ndarray) -> np.ndarray:
 
 # ----- tokens --------------------------------------------------------------
 
+
 @functools.cache
 def _byte_decoder() -> dict[str, int]:
     """GPT-2's byte-level BPE alphabet: each byte has a printable stand-in."""
-    printable = list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
+    printable = (
+        list(range(ord("!"), ord("~") + 1)) + list(range(ord("¡"), ord("¬") + 1)) + list(range(ord("®"), ord("ÿ") + 1))
+    )
     chars = printable[:]
     n = 0
     for b in range(256):
@@ -75,7 +80,7 @@ def _byte_decoder() -> dict[str, int]:
             printable.append(b)
             chars.append(256 + n)
             n += 1
-    return {chr(c): b for b, c in zip(printable, chars)}
+    return {chr(c): b for b, c in zip(printable, chars, strict=True)}
 
 
 class Vocabulary:
@@ -92,6 +97,20 @@ class Vocabulary:
 
 
 # ----- model ---------------------------------------------------------------
+
+
+def _run(session: ort.InferenceSession, feeds: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """All of a session's outputs by name. ONNX Runtime types them as arrays,
+    sparse tensors, sequences or maps; Whisper's are all plain arrays."""
+    names = [o.name for o in session.get_outputs()]
+    outputs = session.run(names, feeds)
+    arrays = {}
+    for name, value in zip(names, outputs, strict=True):
+        if not isinstance(value, np.ndarray):
+            raise TypeError(f"{name} is a {type(value).__name__}, not an array")
+        arrays[name] = value
+    return arrays
+
 
 @dataclass
 class Timing:
@@ -112,16 +131,23 @@ class Whisper:
         except Exception as e:  # already registered in this process
             if "already registered" not in str(e):
                 raise
-        npu = [d for d in ort.get_ep_devices()
-               if d.ep_name == "QNNExecutionProvider" and d.device.type == ort.OrtHardwareDeviceType.NPU]
+        npu = [
+            d
+            for d in ort.get_ep_devices()
+            if d.ep_name == "QNNExecutionProvider" and d.device.type == ort.OrtHardwareDeviceType.NPU
+        ]
         if not npu:
             raise RuntimeError("no NPU found for the QNN execution provider")
 
         meta = json.loads((model / "metadata.json").read_text())["model_files"]
-        specs = {name: spec for part in meta.values() for side in ("inputs", "outputs")
-                 for name, spec in part[side].items()}
-        self.quant = {name: (s["quantization_parameters"]["scale"], s["quantization_parameters"]["zero_point"])
-                      for name, s in specs.items() if "quantization_parameters" in s}
+        specs = {
+            name: spec for part in meta.values() for side in ("inputs", "outputs") for name, spec in part[side].items()
+        }
+        self.quant = {
+            name: (s["quantization_parameters"]["scale"], s["quantization_parameters"]["zero_point"])
+            for name, s in specs.items()
+            if "quantization_parameters" in s
+        }
         self.dtypes = {name: s["dtype"] for name, s in specs.items()}
         self.decoder_inputs = meta["decoder.onnx"]["inputs"]
         self.max_len = self.decoder_inputs["attention_mask"]["shape"][-1]
@@ -133,8 +159,6 @@ class Whisper:
         self.encoder = ort.InferenceSession(str(model / "encoder.onnx"), sess_options=opts)
         self.decoder = ort.InferenceSession(str(model / "decoder.onnx"), sess_options=opts)
         self.load_s = time.perf_counter() - t
-        self.encoder_outputs = [o.name for o in self.encoder.get_outputs()]
-        self.decoder_outputs = [o.name for o in self.decoder.get_outputs()]
         self.vocabulary = Vocabulary(model / "vocab.json")
 
     def _q(self, name: str, x: np.ndarray) -> np.ndarray:
@@ -154,8 +178,7 @@ class Whisper:
         t0 = time.perf_counter()
         mel = log_mel(audio)
         t1 = time.perf_counter()
-        enc = dict(zip(self.encoder_outputs,
-                       self.encoder.run(None, {"input_features": self._q("input_features", mel)})))
+        enc = _run(self.encoder, {"input_features": self._q("input_features", mel)})
         t2 = time.perf_counter()
 
         feeds = {name: self._carry(name, name, value) for name, value in enc.items()}
@@ -173,7 +196,7 @@ class Whisper:
             feeds["input_ids"] = np.array([[token]], np.int32)
             feeds["position_ids"] = np.array([n], np.int32)
             feeds["attention_mask"] = self._q("attention_mask", mask)
-            out = dict(zip(self.decoder_outputs, self.decoder.run(None, feeds)))
+            out = _run(self.decoder, feeds)
             steps += 1
             for name, value in out.items():
                 if name.endswith("_out"):
