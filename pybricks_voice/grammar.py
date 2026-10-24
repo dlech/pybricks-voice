@@ -23,6 +23,7 @@ DEFAULT_DISTANCE_MM = 200.0
 MIN_RADIUS_MM = 60.0  # about half the axle track: the tightest circle a driving base can follow
 SHAPE_SIDE_MM = {"small": 150.0, "little": 150.0, "tiny": 100.0, "big": 500.0, "large": 500.0, "huge": 800.0}
 DEFAULT_SHAPE_SIDE_MM = 300.0
+ZIGZAG_LEG_MM = 200.0
 _SHAPES = {"triangle": 3, "square": 4, "box": 4, "pentagon": 5, "hexagon": 6, "octagon": 8}
 # "back to the starting point", "return to start", "go home", "back where you started";
 # not "start driving forward".
@@ -70,6 +71,7 @@ MAX_REPEAT = 10
 _CIRCLE = {"circle", "circles", "loop", "loops", "donut", "donuts", "doughnut", "doughnuts"}
 _CURVE = {"curve", "arc", "veer", "swing", "bend", "swivel", "swerve"}
 _IN_PLACE = {"spin", "turn", "rotate", "pivot"}
+_WIGGLE = {"shake", "wiggle", "wag", "dance", "shimmy"}
 _TOO_FAR = {"mile", "miles", "km", "kilometer", "kilometers", "kilometre", "kilometres", "yard", "yards"}
 # What Whisper writes for words it half-hears.
 _SOUNDS_LIKE = {"vier": "veer", "steer": "veer", "spun": "spin", "twice": "2 times", "thrice": "3 times"}
@@ -161,6 +163,7 @@ class Parse:
     commands: list[Command]
     not_understood: list[str]
     remarks: list[str] = field(default_factory=list)  # what the robot says back to chatter
+    waiting: bool = False  # the start of a request, the rest of which comes after a pause
 
 
 def _words_to_numbers(text: str) -> str:
@@ -236,6 +239,12 @@ def normalize(text: str) -> str:
         text,
     )
     text = re.sub(r"\bat the same time\b", "", text)
+    text = re.sub(r"\b(?:there|here) we go\b", "", text)  # it moved; not "go"
+    text = re.sub(r"\b(?:non )?[zs]ig\s?[zs]ag(s?)\b", r"zigzag\1", text)  # "Zig Zag", "zig-zag", "sigzag"
+    # One command, so the "and" in it mustn't split it.
+    text = re.sub(r"\b(?:back and forth|forwards? and backwards?|forwards? and back)\b", "backandforth", text)
+    # "Right, 90." is one command, said with a breath in it.
+    text = re.sub(r"\b(left|right|forwards?|back|backwards?)\s*,\s*(?=\d)", r"\1 ", text)
     return " ".join(text.split())
 
 
@@ -251,6 +260,17 @@ def _number(tokens: list[str]) -> tuple[float | None, str | None]:
             rest = [w for w in tokens[i + 1 :] if w not in ("a", "an", "of")]  # "half a meter"
             return float(t), rest[0] if rest else None
     return None, None
+
+
+def _zigzag(leg: float, sign: float) -> list[Command]:
+    """Four legs at 45° either side of straight ahead, ending the way it started."""
+    turns = [Turn(-sign * 90), Turn(sign * 90), Turn(-sign * 90)]
+    return [Turn(sign * 45), Straight(leg), *[c for turn in turns for c in (turn, Straight(leg))], Turn(sign * 45)]
+
+
+def _wiggle(sign: float) -> list[Command]:
+    """Side to side on the spot, and back to facing ahead."""
+    return [Turn(-sign * 20), Turn(sign * 40), Turn(-sign * 40), Turn(sign * 20)]
 
 
 def parse_segment(segment: str) -> list[Command] | None:
@@ -284,7 +304,22 @@ def parse_segment(segment: str) -> list[Command] | None:
         side = next((s for w, s in SHAPE_SIDE_MM.items() if w in words), DEFAULT_SHAPE_SIDE_MM)
         if value is not None and unit in _UNITS_MM:
             side = value * _UNITS_MM[unit]
-        return [Straight(side), Turn(sign * 360 / shape)] * shape
+        # "Half a hexagon": that part of the way around.
+        sides = round(shape * value) if value is not None and value < 1 and unit not in _UNITS_MM else shape
+        return [Straight(-side if backward else side), Turn(sign * 360 / shape)] * max(1, sides)
+
+    if words & _WIGGLE:
+        return _wiggle(sign)
+
+    if words & {"zigzag", "zigzags"}:
+        # Four legs at 45° either side of straight ahead, ending the way it started.
+        leg = next((s for w, s in SHAPE_SIDE_MM.items() if w in words), ZIGZAG_LEG_MM)
+        if value is not None and unit in _UNITS_MM:
+            leg = value * _UNITS_MM[unit]
+        return _zigzag(-leg if backward else leg, sign)
+    if "backandforth" in words:
+        distance = value * _UNITS_MM.get(unit or "", 10.0) if value is not None else DEFAULT_DISTANCE_MM
+        return [Straight(distance), Straight(-distance)]
 
     radius = next((r for w, r in CIRCLE_RADIUS_MM.items() if w in words), DEFAULT_CIRCLE_RADIUS_MM)
     if value is not None and "radius" in words:
@@ -385,6 +420,15 @@ def describe(commands: list[Command]) -> str:
                 return "go faster" if f > 1 else "slow down"
         return str(c)
 
+    def pattern_at(commands: list[Command], i: int) -> tuple[str, int] | None:
+        """A zigzag or a wiggle starting at i, in words, and how many commands it is."""
+        match commands[i : i + 2]:
+            case [Turn(a), Straight(leg)] if abs(a) == 45 and commands[i : i + 9] == _zigzag(leg, a / 45):
+                return f"zigzag {'back' if leg < 0 else 'forward'} to the {side(a)} ({abs(leg) / 10:g} cm legs)", 9
+            case [Turn(a), Turn()] if abs(a) == 20 and commands[i : i + 4] == _wiggle(-a / 20):
+                return "wiggle", 4
+        return None
+
     def say(commands: list[Command]) -> str:
         # A pattern repeated, as a square is: "4 × (forward 30 cm, then turn right 90°)".
         for period in range(2, len(commands) // 2 + 1):
@@ -392,8 +436,10 @@ def describe(commands: list[Command]) -> str:
                 return f"{len(commands) // period} × ({say(commands[:period])})"
         # "spin left all the way around ×3" reads better than three of them.
         parts: list[tuple[str, int]] = []
-        for c in commands:
-            text = one(c)
+        i = 0
+        while i < len(commands):
+            text, length = pattern_at(commands, i) or (one(commands[i]), 1)
+            i += length
             if parts and parts[-1][0] == text:
                 parts[-1] = (text, parts[-1][1] + 1)
             else:
@@ -474,7 +520,32 @@ _CHATTER = _PRAISE | {
     "lol",
     "gosh",
     "dear",
+    "march",  # "Forward." … "March."
+    "hello",
+    "hi",
+    "little",  # "such a good little robot"
+    "we",  # Whisper's "we're a robot" for "you're a robot"
+    "womp",
 }
+
+# A request that stops on one of these has more coming: "Do a" … "100 centimeter circle".
+# Not verbs like "go", which end sentences too: "Oh, there we go."
+_DANGLING = {"a", "an", "the", "do", "make", "in", "to", "of", "by", "for", "with", "figure", "zig"}
+
+
+_NEGATIONS = {"don", "doesn", "didn", "can", "cannot", "won", "isn", "not", "never"}  # "don't" -> "don t"
+_PAST = {"came", "went", "was", "were", "did", "had", "drew", "disappeared", "appeared", "happened", "showed"}
+_COMMENT_RE = re.compile(r"^(?:why|how come|when|where|who|i (?:mean|think|guess|said|was|wonder|know))\b")
+
+
+def _is_comment(segment: str) -> bool:
+    """Talk about the robot rather than to it: "Why can't you draw a backward
+    circle?", "You don't go backwards", "…and then came back". Never a command,
+    and not worth an "I didn't get that" either."""
+    words = set(segment.split())
+    if "can" in words and "t" not in words:
+        words.discard("can")  # "can you…" asks for something; "can t" doesn't
+    return bool(words & _NEGATIONS or words & _PAST or _COMMENT_RE.match(segment))
 
 
 def parse(text: str) -> Parse:
@@ -488,9 +559,31 @@ def parse(text: str) -> Parse:
             if set(segment.split()) & _PRAISE and not remarks:
                 remarks.append("Thanks! 😊")
             continue
+        if _is_comment(segment):
+            continue
         parsed = parse_segment(segment)
         if parsed is None:
             not_understood.append(segment)
         else:
             commands.extend(parsed)
     return Parse(commands, not_understood, remarks)
+
+
+class Conversation:
+    """Parses what is said in turn, joining a request that a pause cut in two."""
+
+    JOIN_S = 8.0
+
+    def __init__(self) -> None:
+        self._held: tuple[str, float] | None = None
+
+    def parse(self, text: str, now: float) -> Parse:
+        if self._held is not None and now - self._held[1] <= self.JOIN_S:
+            text = f"{self._held[0]} {text}"
+        self._held = None
+        result = parse(text)
+        words = normalize(text).strip(" .").split()
+        if not result.commands and words and words[-1] in _DANGLING:
+            self._held = (text.rstrip(" .,;"), now)  # not a sentence that ended
+            return Parse([], [], waiting=True)
+        return result

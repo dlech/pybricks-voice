@@ -1,6 +1,6 @@
 import unittest
 
-from pybricks_voice.grammar import describe, normalize, parse
+from pybricks_voice.grammar import Conversation, describe, normalize, parse
 from pybricks_voice.robot import Curve, Drive, Home, SetSpeed, Stop, Straight, Turn
 
 
@@ -29,6 +29,10 @@ class TestDescribe(unittest.TestCase):
         self.assertEqual(describe([Curve(500, -30)]), "Curve left 30° (50 cm radius)")
         self.assertEqual(describe([Straight(300), Turn(90)] * 4), "4 × (forward 30 cm, then turn right 90°)")
         self.assertEqual(describe([Home()]), "Go back to the start")
+        self.assertEqual(
+            describe([Straight(100), *parse("zigzag").commands]),
+            "Forward 10 cm, then zigzag forward to the right (20 cm legs)",
+        )
 
 
 class TestParse(unittest.TestCase):
@@ -91,7 +95,7 @@ class TestParse(unittest.TestCase):
 
     def test_chatter_doesnt_move_the_robot(self) -> None:
         self.check("Okay.")
-        self.check("Hello? Oh, there we go.", not_understood=["hello oh", "there we go"])
+        self.check("Hello? Oh, there we go.")
         self.check("Spin around three times.", Turn(360), Turn(360), Turn(360))
         self.check("It's been around three times.", Turn(360), Turn(360), Turn(360))
 
@@ -138,8 +142,84 @@ class TestParse(unittest.TestCase):
         self.check("Turn right. Forward 10 centimeters. Turn left.", Turn(90), Straight(100), Turn(-90))
 
     def test_not_understood_is_reported(self) -> None:
-        self.check("Forward 20, do a little dance", Straight(200), not_understood=["do a little dance"])
+        self.check("Forward 20, make me a sandwich", Straight(200), not_understood=["make me a sandwich"])
         self.check("What a nice day", not_understood=["what a nice day"])
+
+    def test_a_breath_before_the_number(self) -> None:
+        self.check("Right, 90.", Turn(90))
+        self.check("Left, 45.", Turn(-45))
+        self.check("Turn left, then forward.", Turn(-90), Straight(200))
+
+    def test_forward_march(self) -> None:
+        self.check("Forward march!", Straight(200))
+        self.check("March.")  # the second half of "Forward." … "March."
+
+    def test_backward_shapes(self) -> None:
+        self.check("Make a square while driving backwards.", *[Straight(-300), Turn(90)] * 4)
+        self.check("A backwards triangle to the left.", *[Straight(-300), Turn(-120)] * 3)
+
+    def test_zigzag(self) -> None:
+        legs = [Straight(200), Turn(-90), Straight(200), Turn(90), Straight(200), Turn(-90), Straight(200)]
+        self.check("Drive in a zigzag.", Turn(45), *legs, Turn(45))
+        result = parse("zigzag to the left").commands
+        self.assertEqual(sum(c.angle for c in result if isinstance(c, Turn)), 0)  # ends the way it started
+
+    def test_how_whisper_spells_zigzag(self) -> None:
+        for text in ("Zig Zag", "zig-zag", "non-sigzag.", "zigzag"):
+            self.assertEqual(describe(parse(text).commands), "Zigzag forward to the right (20 cm legs)", text)
+
+    def test_part_of_a_shape(self) -> None:
+        self.check("Half a hexagon.", *[Straight(300), Turn(60)] * 3)
+        self.check("Half a square backwards.", *[Straight(-300), Turn(90)] * 2)
+
+    def test_wiggle(self) -> None:
+        self.check("Shake it.", Turn(-20), Turn(40), Turn(-40), Turn(20))
+        self.assertEqual(describe(parse("do a little dance then forward").commands), "Wiggle, then forward 20 cm")
+
+    def test_more_praise(self) -> None:
+        self.assertEqual(parse("Such a good little robot.").remarks, ["Thanks! 😊"])
+        self.check("Womp womp.")
+
+    def test_back_and_forth(self) -> None:
+        self.check("Go back and forth.", Straight(200), Straight(-200))
+        self.check("Forward and back 30 cm.", Straight(300), Straight(-300))
+        self.check("Welcome back and forth.", Straight(200), Straight(-200))  # Whisper's "Go back and forth"
+
+    def test_talk_about_the_robot_doesnt_move_it(self) -> None:
+        self.check("You don't go backwards.")
+        self.check("Why can't you draw a backward circle?")
+        self.check("You just can't do a backward square.")
+        self.check("It disappeared and then came back.")
+        self.check("I mean the drawing doesn't always show up while you're driving.")
+        self.check("Don't turn left.")
+        self.check("Can you drive in a circle?", Curve(300, 360))
+
+    def test_here_we_go(self) -> None:
+        self.check("Here we go, forward 10.", Straight(100))
+
+
+class TestConversation(unittest.TestCase):
+    def test_a_request_cut_in_two_by_a_pause(self) -> None:
+        talk = Conversation()
+        self.assertTrue(talk.parse("Do a", 0).waiting)
+        self.assertEqual(talk.parse("100 centimeter circle.", 2).commands, [Curve(500, 360)])
+        self.assertTrue(talk.parse("Do a figure.", 10).waiting)
+        self.assertEqual(talk.parse("Figure eight.", 13).commands, [Curve(300, 360), Curve(300, -360)])
+        self.assertTrue(talk.parse("Give me that zig!", 20).waiting)
+        self.assertEqual(describe(talk.parse("Zag.", 22).commands), "Zigzag forward to the right (20 cm legs)")
+
+    def test_only_what_comes_soon_after_is_joined(self) -> None:
+        talk = Conversation()
+        talk.parse("Do a", 0)
+        result = talk.parse("left", 60)
+        self.assertEqual((result.commands, result.waiting), ([Turn(-90)], False))
+
+    def test_a_whole_request_is_not_held(self) -> None:
+        talk = Conversation()
+        self.assertEqual(talk.parse("Turn left.", 0).commands, [Turn(-90)])
+        self.assertEqual(talk.parse("Forward.", 1).commands, [Straight(200)])
+        self.assertFalse(talk.parse("Hello? Oh, there we go.", 2).waiting)
+        self.assertEqual(talk.parse("Drive in a circle.", 3).not_understood, [])
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ from typing import Any
 
 import numpy as np
 
-from .grammar import Parse, parse
+from .grammar import Conversation, Parse
 from .whisper import SAMPLE_RATE, Timing, Whisper
 
 # ----- voice activity ------------------------------------------------------
@@ -237,6 +237,7 @@ class Listener:
         self._thread = threading.Thread(target=self._run_jobs, name="whisper", daemon=True)
         self._thread.start()
         self._whisper: Whisper | None = None
+        self.conversation = Conversation()
         self.segmenter: Segmenter | None = None
         self.muted = False
         self.record_dir: pathlib.Path | None = None  # set to keep every utterance, for debugging
@@ -263,12 +264,13 @@ class Listener:
         while True:
             item = await self._items.get()
             if isinstance(item, str):
-                yield Heard(item, parse(item), 0.0, Timing(0, 0, 0, 0), 0.0)
+                yield Heard(item, self.conversation.parse(item, time.monotonic()), 0.0, Timing(0, 0, 0, 0), 0.0)
                 continue
             audio, rate, ended = item
             text, timing = await self._on_whisper_thread(functools.partial(self._transcribe, audio, rate))
             if not is_noise(text):
-                yield Heard(text, parse(text), len(audio) / rate, timing, (time.perf_counter() - ended) * 1000)
+                parsed = self.conversation.parse(text, time.monotonic())
+                yield Heard(text, parsed, len(audio) / rate, timing, (time.perf_counter() - ended) * 1000)
 
     def close(self) -> None:
         self._jobs.put(None)
