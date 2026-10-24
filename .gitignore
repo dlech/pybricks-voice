@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+# Downloaded model files (see README)
+models/
+# Screenshots and generated test audio
+out/
+# WebView2 user data
+.webview2/
