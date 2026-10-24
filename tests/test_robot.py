@@ -1,7 +1,7 @@
 import math
 import unittest
 
-from pybricks_voice.robot import Drive, SetSpeed, SimRobot, Stop, Straight, Turn
+from pybricks_voice.robot import Curve, Drive, Home, SetSpeed, SimRobot, Stop, Straight, Turn
 
 DT = 1 / 120
 
@@ -57,6 +57,64 @@ class TestSimRobot(unittest.TestCase):
         expected = 112 / 56 * 360
         self.assertAlmostEqual(s.left_angle, expected, places=1)
         self.assertAlmostEqual(s.right_angle, -expected, places=1)
+
+    def test_a_full_circle_comes_back(self) -> None:
+        robot = SimRobot()
+        robot.run([Curve(300, 360)])
+        run_until_idle(robot)
+        s = robot.state()
+        self.assertAlmostEqual(s.x, 0, places=1)
+        self.assertAlmostEqual(s.y, 0, places=1)
+        self.assertAlmostEqual(s.heading, 0, places=3)
+        self.assertAlmostEqual(s.distance, 2 * math.pi * 300, places=0)
+
+    def test_a_quarter_arc_to_the_right(self) -> None:
+        robot = SimRobot()
+        robot.run([Curve(500, 90)])
+        run_until_idle(robot)
+        s = robot.state()
+        # Around a centre 500 mm to the right: ends 500 right, 500 ahead, facing right.
+        self.assertAlmostEqual(s.x, 500, places=0)
+        self.assertAlmostEqual(s.y, 500, places=0)
+        self.assertAlmostEqual(s.heading, 90, places=3)
+
+    def test_a_tight_curve_is_slower_than_the_speed_limit(self) -> None:
+        robot = SimRobot()
+        robot.run([Curve(50, -720)])
+        top = 0.0
+        while robot.busy:
+            robot.step(DT)
+            top = max(top, abs(robot.state().turn_rate))
+        self.assertLessEqual(top, robot.limits.turn_rate + 1e-9)
+        self.assertAlmostEqual(robot.state().heading, 0, places=3)
+
+    def test_backwards_circle_comes_back_too(self) -> None:
+        robot = SimRobot()
+        robot.run([Curve(-300, 90)])
+        run_until_idle(robot)
+        s = robot.state()
+        self.assertAlmostEqual(s.heading, 90, places=3)
+        self.assertLess(s.y, 0)  # it went backwards
+        robot.run([Curve(-300, 270)])
+        run_until_idle(robot)
+        s = robot.state()
+        self.assertAlmostEqual(s.x, 0, places=1)
+        self.assertAlmostEqual(s.y, 0, places=1)
+
+    def test_home_from_anywhere(self) -> None:
+        robot = SimRobot()
+        robot.run([Straight(400), Turn(-30), Curve(250, 200), Straight(-150), Home()])
+        run_until_idle(robot)
+        s = robot.state()
+        self.assertAlmostEqual(s.x, 0, places=1)
+        self.assertAlmostEqual(s.y, 0, places=1)
+        self.assertAlmostEqual(s.heading, 0, places=2)
+
+    def test_home_when_already_home(self) -> None:
+        robot = SimRobot()
+        robot.run([Turn(45), Home()])
+        run_until_idle(robot)
+        self.assertAlmostEqual(robot.state().heading, 0, places=3)
 
     def test_drive_for_a_time(self) -> None:
         robot = SimRobot()

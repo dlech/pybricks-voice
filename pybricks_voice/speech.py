@@ -8,10 +8,12 @@ the room's own noise floor, and each utterance is transcribed once.
 
 from __future__ import annotations
 
+import pathlib
 import queue
 import re
 import threading
 import time
+import wave
 from collections import deque
 from dataclasses import dataclass
 from typing import Callable
@@ -33,8 +35,14 @@ class Segmenter:
     """
 
     # START_MS spans 4 frames, so a click (which can touch 3) never starts one.
-    FRAME_MS, START_MS, END_MS, PREROLL_MS, MAX_S = 30, 120, 600, 300, 12.0
-    MARGIN_DB, MIN_DB = 12.0, -50.0
+    FRAME_MS, START_MS, END_MS, PREROLL_MS, MAX_S = 30, 120, 600, 300, 6.0
+    # MIN_DB sits above an ordinary quiet room through Windows' voice processing
+    # (about -48 dBFS), which otherwise starts "speech" that never ends.
+    MARGIN_DB, MIN_DB = 12.0, -42.0
+    # Speech has ended once it is this far below how loud the speaker has been,
+    # whatever the learned noise floor says: the floor is learned in the near
+    # silence voice processing gives at first, and the room is often louder.
+    DROP_DB = 15.0
 
     def __init__(self, rate: int) -> None:
         self.rate = rate
@@ -43,6 +51,7 @@ class Segmenter:
         self._preroll: deque[np.ndarray] = deque(maxlen=self.PREROLL_MS // self.FRAME_MS)
         self._history: deque[float] = deque(maxlen=3000 // self.FRAME_MS)  # 3 s of frame levels
         self._speech: list[np.ndarray] | None = None
+        self._speech_levels: list[float] = []
         self._loud = self._quiet = 0
         self.level_db = -120.0
         self.threshold_db = self.MIN_DB
@@ -71,11 +80,15 @@ class Segmenter:
             self._loud = self._loud + 1 if loud else 0
             if self._loud * self.FRAME_MS >= self.START_MS:
                 self._speech = list(self._preroll)
+                self._speech_levels = []
                 self._quiet = 0
             return None
 
         self._speech.append(frame)
-        self._quiet = 0 if loud else self._quiet + 1
+        self._speech_levels.append(self.level_db)
+        speaking_level = np.percentile(self._speech_levels, 90)
+        still_talking = loud and self.level_db > speaking_level - self.DROP_DB
+        self._quiet = 0 if still_talking else self._quiet + 1
         length_s = len(self._speech) * self.FRAME_MS / 1000
         if self._quiet * self.FRAME_MS >= self.END_MS or length_s >= self.MAX_S:
             utterance = np.concatenate(self._speech)
@@ -128,6 +141,8 @@ class Microphone:
         node.device_input_node.add_outgoing_connection(self.output)
         props = self.output.encoding_properties
         self.rate, self.channels = props.sample_rate, props.channel_count
+        self.energy = np.zeros(self.channels)
+        print(f"microphone: {props.subtype} {self.rate} Hz × {self.channels} channels", flush=True)
         self.graph.add_quantum_started(self._quantum)
         self.graph.start()
 
@@ -142,8 +157,21 @@ class Microphone:
         ):
             # Copied out while the view is open: PyWinRT won't close a reference
             # whose memory an array still holds.
-            mono = np.frombuffer(view, np.float32)[: buffer.length // 4].reshape(-1, self.channels).mean(axis=1)
-        self.on_samples(mono)
+            frames = np.frombuffer(view, np.float32)[: buffer.length // 4].reshape(-1, self.channels)
+            # With MediaCategory.SPEECH, Windows' voice processing puts its output on
+            # one channel of the array and leaves the rest silent (channel 2 of 8 on a
+            # Surface Pro), so averaging divided the voice by 8. Use the channel with
+            # the most energy, which is the processed one.
+            if len(frames):  # the first quanta can be empty
+                self.energy = 0.95 * self.energy + 0.05 * np.mean(frames * frames, axis=0)
+            mono = frames[:, int(np.argmax(self.energy))].copy()
+            del frames  # it still exports the view, which must be released before it closes
+        if len(mono):
+            self.on_samples(mono)
+
+    @property
+    def channel(self) -> int:
+        return int(np.argmax(self.energy))
 
     def stop(self) -> None:
         if self.graph is not None:
@@ -203,6 +231,23 @@ class Listener:
     def close(self) -> None:
         self._utterances.put(None)
 
+    record_dir: pathlib.Path | None = None  # set to keep every utterance, for debugging
+
+    def _record(self, audio: np.ndarray, text: str) -> None:
+        level = 20 * np.log10(np.sqrt(np.mean(audio * audio)) + 1e-9)
+        peak = 20 * np.log10(np.abs(audio).max() + 1e-9)
+        print(f"heard {len(audio) / SAMPLE_RATE:4.1f} s, rms {level:5.1f} / peak {peak:5.1f} dBFS: {text!r}", flush=True)
+        if self.record_dir is None:
+            return
+        self.record_dir.mkdir(parents=True, exist_ok=True)
+        n = len(list(self.record_dir.glob("*.wav")))
+        with wave.open(str(self.record_dir / f"{n:03d}.wav"), "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)
+            wav.setframerate(SAMPLE_RATE)
+            wav.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
+        (self.record_dir / f"{n:03d}.txt").write_text(text, encoding="utf-8")
+
     def _run(self) -> None:
         self.on_status("loading Whisper on the NPU…")
         whisper = Whisper()
@@ -212,7 +257,9 @@ class Listener:
                 self.on_heard(Heard(item, parse(item), 0.0, Timing(0, 0, 0, 0), 0.0))
                 continue
             audio, rate, ended = item
-            text, timing = whisper.transcribe(resample(audio, rate))
+            audio16 = resample(audio, rate)
+            text, timing = whisper.transcribe(audio16)
+            self._record(audio16, text)
             if not is_noise(text):
                 self.on_heard(Heard(text, parse(text), len(audio) / rate, timing,
                                     (time.perf_counter() - ended) * 1000))

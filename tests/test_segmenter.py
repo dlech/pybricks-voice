@@ -49,6 +49,19 @@ class TestSegmenter(unittest.TestCase):
         audio = np.concatenate([noise(2, -55), tone(1, -25), noise(0.3, -55, 1), tone(1, -25), noise(2, -55, 2)])
         self.assertEqual(len(feed_in_chunks(Segmenter(RATE), audio)), 1)
 
+    def test_speech_ends_when_the_room_is_louder_than_it_learned(self) -> None:
+        # What Windows' voice processing gives: near silence at first (so the
+        # noise floor is learned very low), then speech, then ordinary room noise
+        # at -48 dBFS that is louder than that floor. Speech must still end.
+        audio = np.concatenate([noise(2, -65), tone(1.2, -25), noise(4, -48, 1)])
+        utterances = feed_in_chunks(Segmenter(RATE), audio)
+        self.assertEqual(len(utterances), 1)
+        self.assertLess(len(utterances[0]) / RATE, 2.5)
+
+    def test_quiet_room_noise_does_not_start_speech(self) -> None:
+        audio = np.concatenate([noise(2, -65), noise(3, -46, 1), noise(2, -65, 2)])
+        self.assertEqual(feed_in_chunks(Segmenter(RATE), audio), [])
+
     def test_endless_talking_is_cut(self) -> None:
         utterances = feed_in_chunks(Segmenter(RATE), np.concatenate([noise(2, -55), tone(30, -25)]))
         self.assertGreaterEqual(len(utterances), 2)

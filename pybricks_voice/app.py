@@ -22,6 +22,7 @@ import time
 import traceback
 import wave
 from typing import Callable
+from xml.sax.saxutils import quoteattr
 
 import numpy as np
 from typing_extensions import override
@@ -30,8 +31,7 @@ from winrt.microsoft.ui.xaml import (
     ApplicationInitializationCallbackParams,
     FrameworkElement,
     LaunchActivatedEventArgs,
-    TextWrapping,
-    Thickness,
+    UIElement,
     Window,
 )
 from winrt.microsoft.ui.xaml.controls import (
@@ -56,6 +56,7 @@ from winrt.windows.graphics import SizeInt32
 from winrt.windows.system import VirtualKey
 from winrt.windows.ui.xaml.interop import TypeKind, TypeName
 
+from .grammar import describe, suggest
 from .robot import SimRobot
 from .speech import Heard, Listener, Microphone, Segmenter
 from .whisper import SAMPLE_RATE
@@ -105,9 +106,10 @@ XAML = """
                 <Button Name="camera" Content="Camera"/>
             </StackPanel>
             <ScrollViewer Name="scroller" Grid.Row="4">
-                <StackPanel Name="log" Spacing="10"/>
+                <StackPanel Name="log" Spacing="8" Padding="0,0,12,0"/>
             </ScrollViewer>
-            <TextBlock Name="queue" Grid.Row="5" Opacity="0.7" TextWrapping="Wrap" FontFamily="Consolas"/>
+            <TextBlock Name="queue" Grid.Row="5" Opacity="0.7" TextWrapping="Wrap" MaxLines="3"
+                       TextTrimming="CharacterEllipsis"/>
         </Grid>
     </Grid>
 </Window>
@@ -138,6 +140,7 @@ class App(Application, IXamlMetadataProvider):
         self.chase = True
         self.last_tick = time.perf_counter()
         self.tick_gaps: list[float] = []
+        self.shown_pending: list | None = None
         self.latencies: list[float] = []
 
     # ----- start up -----------------------------------------------------------
@@ -159,6 +162,9 @@ class App(Application, IXamlMetadataProvider):
         self.log = find("log").as_(StackPanel)
         self.scroller = find("scroller").as_(ScrollViewer)
         self.queue_text = find("queue").as_(TextBlock)
+        # Newest message at the bottom, as in a messaging app: follow the
+        # conversation once each new bubble has been measured.
+        self.log.add_size_changed(lambda s, e: self.scroller.change_view(None, self.scroller.scrollable_height, None))
 
         find("go").as_(Button).add_click(lambda s, e: self.submit_typed())
         find("stop").as_(Button).add_click(lambda s, e: self.robot.stop())
@@ -243,6 +249,7 @@ class App(Application, IXamlMetadataProvider):
             on_heard=lambda heard: post(lambda: self.on_heard(heard)),
             on_status=lambda text: post(lambda: self.set_status(text)),
         )
+        self.listener.record_dir = self.options.record
         self.listener.start()
         self.microphone = Microphone(lambda samples: self.listener.feed(samples, self.microphone.rate))
         if self.options.feed_wav:
@@ -296,7 +303,9 @@ class App(Application, IXamlMetadataProvider):
                 "x": s.x, "y": s.y, "heading": s.heading, "left": s.left_angle,
                 "right": s.right_angle, "speed": s.speed}}))
         pending = ([s.current] if s.current else []) + s.queued
-        self.queue_text.text = ("▶ " + "  ·  ".join(pending)) if pending else "idle"
+        if pending != self.shown_pending:  # only when it changes, not 60 times a second
+            self.shown_pending = pending
+            self.queue_text.text = ("Now: " + describe(pending)) if pending else "Waiting for a command"
         seg = self.listener.segmenter
         if seg is not None:
             bar = "█" * max(0, min(12, int((seg.level_db + 70) / 4)))
@@ -312,26 +321,44 @@ class App(Application, IXamlMetadataProvider):
         self.robot.run(heard.parse.commands)
         if heard.audio_s:
             self.latencies.append(heard.latency_ms)
-        lines = [f"“{heard.text}”"]
-        if heard.parse.commands:
-            lines.append("→ " + ", ".join(map(str, heard.parse.commands)))
-        if heard.parse.not_understood:
-            lines.append("? didn't understand: " + "; ".join(heard.parse.not_understood))
-        if heard.audio_s:
             pause_ms = Segmenter.END_MS
-            lines.append(f"{heard.audio_s:.1f} s of speech · Whisper {heard.timing.total_ms:.0f} ms on the NPU "
-                         f"· moving {pause_ms + heard.latency_ms:.0f} ms after you stopped "
-                         f"({pause_ms} ms pause + {heard.latency_ms:.0f} ms)")
-        self.add_log("\n".join(lines))
+            detail = (f"Whisper {heard.timing.total_ms:.0f} ms on the NPU · "
+                      f"moving {pause_ms + heard.latency_ms:.0f} ms after you stopped")
+        else:
+            detail = "typed"
+        self.add_bubble(heard.text, mine=True, detail=detail)
 
-    def add_log(self, text: str) -> None:
-        block = TextBlock()
-        block.text = text
-        block.text_wrapping = TextWrapping.WRAP
-        block.margin = Thickness(0, 0, 8, 0)
-        self.log.children.insert(0, block)
-        while len(self.log.children) > 50:
-            self.log.children.pop()
+        replies = list(heard.parse.remarks)
+        if heard.parse.commands:
+            replies.append(describe(heard.parse.commands) + ".")
+        for segment in heard.parse.not_understood:
+            tries = " or ".join(f"“{s}”" for s in suggest(segment))
+            replies.append(f"I didn't get “{segment}”. Try {tries}.")
+        if replies:  # "Oh my" on its own needs no answer
+            self.add_bubble("\n".join(replies), mine=False)
+
+    def add_bubble(self, text: str, mine: bool, detail: str | None = None) -> None:
+        """A message bubble: yours on the right in the accent colour, the robot's on the left."""
+        if mine:
+            look = ('HorizontalAlignment="Right" CornerRadius="16,16,4,16" '
+                    'Background="{ThemeResource AccentFillColorDefaultBrush}"')
+            fore = 'Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"'
+        else:
+            look = ('HorizontalAlignment="Left" CornerRadius="16,16,16,4" BorderThickness="1" '
+                    'Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" '
+                    'BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"')
+            fore = ""
+        extra = (f'<TextBlock Text={quoteattr(detail)} FontSize="11" Opacity="0.75" TextWrapping="Wrap" {fore}/>'
+                 if detail else "")
+        bubble = XamlReader.load(
+            f'<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" {look} '
+            f'MaxWidth="290" Padding="12,8,12,8">'
+            f'<StackPanel Spacing="2"><TextBlock Text={quoteattr(text)} TextWrapping="Wrap" {fore}/>{extra}'
+            f'</StackPanel></Border>'
+        ).as_(UIElement)
+        self.log.children.append(bubble)
+        while len(self.log.children) > 100:
+            self.log.children.pop(0)
 
     def submit_typed(self) -> None:
         text = self.typed.text.strip()
@@ -399,6 +426,7 @@ def main() -> None:
     parser.add_argument("--feed-wav", action="append", default=[], type=pathlib.Path,
                         help="stream a 16 kHz WAV into the listener in real time, as if spoken (repeatable)")
     parser.add_argument("--no-mic", action="store_true", help="don't open the microphone")
+    parser.add_argument("--record", type=pathlib.Path, help="save every utterance (WAV + text) to this folder")
     options = parser.parse_args()
 
     # python.exe declares no DPI awareness, so Windows would stretch the window.

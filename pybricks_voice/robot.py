@@ -13,6 +13,7 @@ turn() is.
 from __future__ import annotations
 
 import math
+from typing import Union
 import threading
 from collections import deque
 from dataclasses import dataclass, field
@@ -32,6 +33,30 @@ class Turn:
 
     def __str__(self) -> str:
         return f"turn({self.angle:g}°)"
+
+
+@dataclass(frozen=True)
+class Curve:
+    """An arc: like Pybricks' DriveBase.curve(radius, angle).
+
+    A negative radius drives backwards, as in Pybricks; the angle's sign is the
+    direction the heading turns, positive right (clockwise), as turn() does.
+    (Check Pybricks' own sign convention for curve() when this reaches a real hub.)
+    """
+
+    radius: float  # mm, negative backwards
+    angle: float  # degrees along the circle, positive clockwise (right)
+
+    def __str__(self) -> str:
+        return f"curve(r {self.radius:g} mm, {self.angle:g}°)"
+
+
+@dataclass(frozen=True)
+class Home:
+    """Back to where the robot started, facing the way it started."""
+
+    def __str__(self) -> str:
+        return "home()"
 
 
 @dataclass(frozen=True)
@@ -60,7 +85,7 @@ class SetSpeed:
         return f"speed ×{self.factor:g}"
 
 
-Command = Straight | Turn | Drive | Stop | SetSpeed
+Command = Union[Straight, Turn, Curve, Drive, Stop, SetSpeed, Home]
 
 
 @dataclass
@@ -91,8 +116,8 @@ class State:
     left_angle: float = 0.0  # wheel rotation, degrees
     right_angle: float = 0.0
     distance: float = 0.0  # odometer, mm
-    current: str = ""
-    queued: list[str] = field(default_factory=list)
+    current: Command | None = None
+    queued: list[Command] = field(default_factory=list)
 
 
 def _approach(value: float, target: float, step: float) -> float:
@@ -148,7 +173,7 @@ class SimRobot:
         with self._lock:
             s = self._state
             return State(s.x, s.y, s.heading, s.speed, s.turn_rate, s.left_angle, s.right_angle,
-                         s.distance, str(self._current or ""), [str(c) for c in self._queue])
+                         s.distance, self._current, list(self._queue))
 
     # ----- simulation ------------------------------------------------------
 
@@ -161,14 +186,46 @@ class SimRobot:
         vmax = lim.straight_speed * self.speed_factor
         wmax = lim.turn_rate * self.speed_factor
 
+        if self._current is None and self._queue and isinstance(self._queue[0], Home):
+            # Where home is depends on where the robot is by then, so it is
+            # worked out only now: face the start, drive there, face forward.
+            self._queue.popleft()
+            distance = math.hypot(s.x, s.y)
+            steps: list[Command] = []
+            if distance > 1:
+                bearing = math.degrees(math.atan2(-s.x, -s.y))
+                steps += [Turn((bearing - s.heading + 180) % 360 - 180), Straight(distance)]
+                final = (0 - bearing + 180) % 360 - 180
+            else:
+                final = (0 - s.heading + 180) % 360 - 180
+            if abs(final) > 0.01:
+                steps.append(Turn(final))
+            self._queue.extendleft(reversed([c for c in steps if not (isinstance(c, Turn) and abs(c.angle) < 0.01)]))
         if self._current is None and self._queue:
             self._current = self._queue.popleft()
             c = self._current
             self._remaining = abs(c.distance) if isinstance(c, Straight) else (
-                abs(c.angle) if isinstance(c, Turn) else c.duration if isinstance(c, Drive) else 0.0)
+                abs(c.angle) if isinstance(c, (Turn, Curve)) else c.duration if isinstance(c, Drive) else 0.0)
 
         c = self._current
         speed_target = turn_target = 0.0
+        if isinstance(c, Curve):
+            # Steer by the angle left, like a turn, but no faster than the wheels
+            # can carry the body around the circle; the speed follows the turn rate.
+            radians_per_degree = math.pi / 180
+            radius = abs(c.radius)
+            w_cap = min(wmax, vmax / (radius * radians_per_degree))
+            reachable = math.sqrt(2 * lim.turn_acceleration * self._remaining)
+            s.turn_rate = _approach(s.turn_rate, math.copysign(min(w_cap, reachable), c.angle),
+                                    lim.turn_acceleration * dt)
+            rotate = math.copysign(min(abs(s.turn_rate * dt), self._remaining), c.angle)
+            s.speed = math.copysign(abs(s.turn_rate) * radians_per_degree * radius, c.radius)
+            self._remaining -= abs(rotate)
+            self._advance(math.copysign(abs(rotate) * radians_per_degree * radius, c.radius), rotate)
+            if self._remaining <= 1e-6:
+                s.speed = s.turn_rate = 0.0
+                self._current = None
+            return
         if isinstance(c, Straight):
             # Trapezoid: the fastest speed that can still stop in what is left.
             reachable = math.sqrt(2 * lim.straight_acceleration * self._remaining)
@@ -194,18 +251,7 @@ class SimRobot:
         elif isinstance(c, Drive):
             self._remaining -= dt
 
-        # Move along the heading halfway through the rotation (midpoint rule).
-        mid = math.radians(s.heading + rotate / 2)
-        s.x += move * math.sin(mid)
-        s.y += move * math.cos(mid)
-        s.heading = (s.heading + rotate + 180) % 360 - 180
-        s.distance += abs(move)
-
-        # Each wheel's arc: clockwise turning drives the left wheel forward.
-        arc = math.radians(rotate) * self.geometry.axle_track / 2
-        to_degrees = 360 / (math.pi * self.geometry.wheel_diameter)
-        s.left_angle += (move + arc) * to_degrees
-        s.right_angle += (move - arc) * to_degrees
+        self._advance(move, rotate)
 
         done = (
             isinstance(c, (Straight, Turn)) and self._remaining <= 1e-6
@@ -217,3 +263,19 @@ class SimRobot:
                 # Settle exactly, as the real DriveBase does when it holds.
                 s.speed = s.turn_rate = 0.0
             self._current = None
+
+    def _advance(self, move: float, rotate: float) -> None:
+        """Moves the body move mm along its heading while turning rotate degrees."""
+        s = self._state
+        # Along the heading halfway through the rotation (midpoint rule).
+        mid = math.radians(s.heading + rotate / 2)
+        s.x += move * math.sin(mid)
+        s.y += move * math.cos(mid)
+        s.heading = (s.heading + rotate + 180) % 360 - 180
+        s.distance += abs(move)
+
+        # Each wheel's arc: clockwise turning drives the left wheel forward.
+        arc = math.radians(rotate) * self.geometry.axle_track / 2
+        to_degrees = 360 / (math.pi * self.geometry.wheel_diameter)
+        s.left_angle += (move + arc) * to_degrees
+        s.right_angle += (move - arc) * to_degrees
