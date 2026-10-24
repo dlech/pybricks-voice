@@ -8,6 +8,8 @@ the room's own noise floor, and each utterance is transcribed once.
 
 from __future__ import annotations
 
+import asyncio
+import functools
 import pathlib
 import queue
 import re
@@ -15,8 +17,9 @@ import threading
 import time
 import wave
 from collections import deque
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -204,36 +207,98 @@ class Heard:
     latency_ms: float  # end of speech -> commands ready
 
 
-class Listener:
-    """Owns Whisper on a thread of its own; feed it audio, get Heard back."""
+def _settle(future: asyncio.Future[Any], result: Any, error: BaseException | None) -> None:
+    if future.done():  # cancelled while it ran
+        return
+    if error is None:
+        future.set_result(result)
+    else:
+        future.set_exception(error)
 
-    def __init__(self, on_heard: Callable[[Heard], None], on_status: Callable[[str], None] = print) -> None:
-        self.on_heard = on_heard
-        self.on_status = on_status
-        self._utterances: queue.Queue[tuple[np.ndarray, int, float] | str | None] = queue.Queue()
-        self._thread = threading.Thread(target=self._run, name="whisper", daemon=True)
+
+class Listener:
+    """Turns speech into Heard, for an asyncio event loop.
+
+    feed() takes audio from any thread (the microphone's is WinRT's own); the
+    segmenter cuts it into utterances there, and each is handed to the loop.
+    Whisper runs on a daemon thread of its own, since its NPU sessions are
+    used from one thread, so the loop's thread never waits on it, and quitting
+    never waits for a transcription to finish:
+
+        await listener.start()
+        async for heard in listener.heard():
+            ...
+    """
+
+    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+        self._loop = loop
+        self._items: asyncio.Queue[tuple[np.ndarray, int, float] | str] = asyncio.Queue()
+        self._jobs: queue.SimpleQueue[tuple[Callable[[], Any], asyncio.Future[Any]] | None] = queue.SimpleQueue()
+        self._thread = threading.Thread(target=self._run_jobs, name="whisper", daemon=True)
+        self._thread.start()
+        self._whisper: Whisper | None = None
         self.segmenter: Segmenter | None = None
         self.muted = False
+        self.record_dir: pathlib.Path | None = None  # set to keep every utterance, for debugging
 
-    def start(self) -> None:
-        self._thread.start()
+    async def start(self) -> float:
+        """Loads Whisper onto the NPU; returns how long that took, in seconds."""
+        self._whisper = await self._on_whisper_thread(Whisper)
+        return self._whisper.load_s
 
     def feed(self, samples: np.ndarray, rate: int) -> None:
-        """From the audio thread: cut into utterances and queue them."""
+        """From any thread: cut into utterances and queue them for the loop."""
         if self.segmenter is None or self.segmenter.rate != rate:
             self.segmenter = Segmenter(rate)
         for utterance in self.segmenter.feed(samples):
             if not self.muted:
-                self._utterances.put((utterance, rate, time.perf_counter()))
+                self._loop.call_soon_threadsafe(self._items.put_nowait, (utterance, rate, time.perf_counter()))
 
     def say(self, text: str) -> None:
-        """Typed input takes the same path, minus Whisper."""
-        self._utterances.put(text)
+        """Typed input takes the same path, minus Whisper. On the loop's thread."""
+        self._items.put_nowait(text)
+
+    async def heard(self) -> AsyncIterator[Heard]:
+        """Everything heard or typed, as it comes, skipping what is only noise."""
+        while True:
+            item = await self._items.get()
+            if isinstance(item, str):
+                yield Heard(item, parse(item), 0.0, Timing(0, 0, 0, 0), 0.0)
+                continue
+            audio, rate, ended = item
+            text, timing = await self._on_whisper_thread(functools.partial(self._transcribe, audio, rate))
+            if not is_noise(text):
+                yield Heard(text, parse(text), len(audio) / rate, timing, (time.perf_counter() - ended) * 1000)
 
     def close(self) -> None:
-        self._utterances.put(None)
+        self._jobs.put(None)
 
-    record_dir: pathlib.Path | None = None  # set to keep every utterance, for debugging
+    async def _on_whisper_thread[T](self, job: Callable[[], T]) -> T:
+        future: asyncio.Future[T] = self._loop.create_future()
+        self._jobs.put((job, future))
+        return await future
+
+    def _run_jobs(self) -> None:
+        while (item := self._jobs.get()) is not None:
+            job, future = item
+            if future.cancelled():
+                continue
+            try:
+                result, error = job(), None
+            except BaseException as e:
+                result, error = None, e
+            try:
+                self._loop.call_soon_threadsafe(_settle, future, result, error)
+            except RuntimeError:  # the loop has closed
+                return
+
+    def _transcribe(self, audio: np.ndarray, rate: int) -> tuple[str, Timing]:
+        """On the Whisper thread."""
+        assert self._whisper is not None, "start() first"
+        audio16 = resample(audio, rate)
+        text, timing = self._whisper.transcribe(audio16)
+        self._record(audio16, text)
+        return text, timing
 
     def _record(self, audio: np.ndarray, text: str) -> None:
         level = 20 * np.log10(np.sqrt(np.mean(audio * audio)) + 1e-9)
@@ -251,18 +316,3 @@ class Listener:
             wav.setframerate(SAMPLE_RATE)
             wav.writeframes((np.clip(audio, -1, 1) * 32767).astype(np.int16).tobytes())
         (self.record_dir / f"{n:03d}.txt").write_text(text, encoding="utf-8")
-
-    def _run(self) -> None:
-        self.on_status("loading Whisper on the NPU…")
-        whisper = Whisper()
-        self.on_status(f"listening (Whisper loaded in {whisper.load_s:.1f} s)")
-        while (item := self._utterances.get()) is not None:
-            if isinstance(item, str):
-                self.on_heard(Heard(item, parse(item), 0.0, Timing(0, 0, 0, 0), 0.0))
-                continue
-            audio, rate, ended = item
-            audio16 = resample(audio, rate)
-            text, timing = whisper.transcribe(audio16)
-            self._record(audio16, text)
-            if not is_noise(text):
-                self.on_heard(Heard(text, parse(text), len(audio) / rate, timing, (time.perf_counter() - ended) * 1000))

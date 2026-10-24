@@ -1,11 +1,11 @@
 """The window: a 3D simulated robot you drive by voice, with Whisper on the NPU.
 
-Threads:
-  UI thread     WinUI, a 60 Hz timer that steps the simulator and sends the
-                pose to the WebView2 scene, and everything that touches XAML
+The UI thread runs asyncio as a guest of WinUI's DispatcherQueue (see
+loop.py), so the app is coroutines that touch XAML directly: one steps the
+simulator 60 times a second and sends the pose to the WebView2 scene, another
+reacts to what was heard. Two threads of their own do the rest:
   audio thread  AudioGraph quanta -> the voice-activity segmenter
-  whisper       transcribes each utterance on the NPU and parses it, then
-                hands the result to the UI thread through its DispatcherQueue
+  whisper       transcribes each utterance on the NPU (a daemon thread)
 """
 
 from __future__ import annotations
@@ -13,11 +13,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import ctypes
-import datetime
 import json
 import pathlib
 import sys
-import threading
 import time
 import traceback
 import wave
@@ -28,6 +26,7 @@ from xml.sax.saxutils import quoteattr
 import numpy as np
 from winrt.microsoft.ui.xaml import (
     Application,
+    DispatcherShutdownMode,
     FrameworkElement,
     LaunchActivatedEventArgs,
     UIElement,
@@ -50,12 +49,12 @@ from winrt.microsoft.web.webview2.core import CoreWebView2Environment, CoreWebVi
 from winrt.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import InitializeOptions, initialize
 from winrt.runtime import ApartmentType, init_apartment
 from winrt.system import Array
-from winrt.windows.foundation import AsyncStatus
 from winrt.windows.graphics import SizeInt32
 from winrt.windows.system import VirtualKey
 from winrt.windows.ui.xaml.interop import TypeKind, TypeName
 
 from .grammar import describe, suggest
+from .loop import DispatcherQueueEventLoop
 from .robot import SimRobot
 from .speech import Heard, Listener, Microphone, Segmenter
 from .whisper import SAMPLE_RATE
@@ -135,7 +134,8 @@ class App(Application, IXamlMetadataProvider):
         self._provider = XamlControlsXamlMetaDataProvider()
         self.options = options
         self.robot = SimRobot()
-        self.scene_ready = False
+        self.scene_ready = asyncio.Event()
+        self.whisper_ready = asyncio.Event()
         self.chase = True
         self.last_tick = time.perf_counter()
         self.tick_gaps: list[float] = []
@@ -173,42 +173,39 @@ class App(Application, IXamlMetadataProvider):
         self.listen.add_toggled(lambda s, e: setattr(self.listener, "muted", not self.listen.is_on))
         self.window.add_closed(lambda s, e: self.shutdown())
 
-        self.dispatcher = self.window.dispatcher_queue
-        self.start_scene()
-        self.start_speech()
-
-        self.timer = self.dispatcher.create_timer()
-        self.timer.interval = datetime.timedelta(milliseconds=16)
-        self.timer.add_tick(lambda t, e: self.tick())
-        self.timer.start()
+        # Closing the window starts shutdown(), and the app exits once main() has
+        # unwound, which takes the loop a few more iterations.
+        self.dispatcher_shutdown_mode = DispatcherShutdownMode.ON_EXPLICIT_SHUTDOWN
+        self.loop = DispatcherQueueEventLoop(self.window.dispatcher_queue)
+        self.loop.start()
+        self.listener = Listener(self.loop)
+        self.listener.record_dir = self.options.record
+        self.microphone = Microphone(lambda samples: self.listener.feed(samples, self.microphone.rate))
+        self.main_task = self.loop.create_task(self.main())
+        self.main_task.add_done_callback(self.finished)
         self.window.activate()
-        self.start_script()
 
-    def start_script(self) -> None:
+    async def main(self) -> None:
+        async with asyncio.TaskGroup() as tasks:
+            tasks.create_task(self.frames())
+            tasks.create_task(self.scene())
+            tasks.create_task(self.speech())
+            if self.options.feed_wav:
+                tasks.create_task(self.feed_wavs())
+            if self.options.say or self.options.quit_after:
+                tasks.create_task(self.script())
+
+    async def script(self) -> None:
         """--say, --screenshot and --quit-after: drive the app without a person."""
-        if not (self.options.say or self.options.quit_after):
-            return
         started = time.perf_counter()
-        said = False
-
-        @logged
-        def check(timer, _) -> None:
-            nonlocal said
-            if not said and self.scene_ready:
-                for text in self.options.say:
-                    self.listener.say(text)
-                said = True
-            quit_after = self.options.quit_after
-            if quit_after and time.perf_counter() - started >= quit_after:
-                timer.stop()
-                if self.options.screenshot:
-                    self.screenshot(self.options.screenshot)
-                self.shutdown()
-
-        self.script_timer = self.dispatcher.create_timer()
-        self.script_timer.interval = datetime.timedelta(milliseconds=250)
-        self.script_timer.add_tick(check)
-        self.script_timer.start()
+        await self.scene_ready.wait()
+        for text in self.options.say:
+            self.listener.say(text)
+        if self.options.quit_after:
+            await asyncio.sleep(self.options.quit_after - (time.perf_counter() - started))
+            if self.options.screenshot:
+                self.screenshot(self.options.screenshot)
+            self.shutdown()
 
     def screenshot(self, path: pathlib.Path) -> None:
         from PIL import ImageGrab
@@ -217,89 +214,77 @@ class App(Application, IXamlMetadataProvider):
         path.parent.mkdir(parents=True, exist_ok=True)
         ImageGrab.grab((pos.x, pos.y, pos.x + size.width, pos.y + size.height), all_screens=True).save(path)
 
-    def start_scene(self) -> None:
+    async def scene(self) -> None:
         USER_DATA.mkdir(exist_ok=True)
-        op = CoreWebView2Environment.create_with_options_async("", str(USER_DATA), None)
-
-        @logged
-        def on_environment(op, status) -> None:
-            if status != AsyncStatus.COMPLETED:
-                self.set_status(f"WebView2 failed: {status.name}")
-                return
-            self.webview.ensure_core_webview2_async(op.get_results()).completed = on_core
-
-        @logged
-        def on_core(op, status) -> None:
-            if status != AsyncStatus.COMPLETED:
-                self.set_status(f"WebView2 failed: {status.name}")
-                return
-            core = self.webview.core_webview2
-            core.set_virtual_host_name_to_folder_mapping(HOST, str(WEB), CoreWebView2HostResourceAccessKind.ALLOW)
-            core.add_web_message_received(lambda s, e: self.on_scene_message(e.web_message_as_json))
-            core.navigate(f"https://{HOST}/scene.html")
-
-        op.completed = on_environment
-
-    def start_speech(self) -> None:
-        def post(callback: Callable[[], None]) -> None:
-            self.dispatcher.try_enqueue(logged(callback))
-
-        self.listener = Listener(
-            on_heard=lambda heard: post(lambda: self.on_heard(heard)),
-            on_status=lambda text: post(lambda: self.set_status(text)),
-        )
-        self.listener.record_dir = self.options.record
-        self.listener.start()
-        self.microphone = Microphone(lambda samples: self.listener.feed(samples, self.microphone.rate))
-        if self.options.feed_wav:
-            threading.Thread(target=self.feed_wavs, name="feed-wav", daemon=True).start()
-        if self.options.no_mic:
+        try:
+            environment = await CoreWebView2Environment.create_with_options_async("", str(USER_DATA), None)
+            await self.webview.ensure_core_webview2_async(environment)
+        except OSError as e:
+            self.set_status(f"WebView2 failed: {e}")
             return
+        core = self.webview.core_webview2
+        core.set_virtual_host_name_to_folder_mapping(HOST, str(WEB), CoreWebView2HostResourceAccessKind.ALLOW)
+        core.add_web_message_received(lambda s, e: self.on_scene_message(e.web_message_as_json))
+        core.navigate(f"https://{HOST}/scene.html")
 
-        def open_microphone() -> None:
-            init_apartment(ApartmentType.MULTI_THREADED)
+    async def speech(self) -> None:
+        self.set_status("loading Whisper on the NPU…")
+        load_s = await self.listener.start()
+        self.whisper_ready.set()
+        self.set_status(f"listening (Whisper loaded in {load_s:.1f} s)")
+        if not self.options.no_mic:
             try:
-                asyncio.run(self.microphone.start())
+                await self.microphone.start()
             except Exception as e:
-                # Python deletes e when the except block ends, before the UI thread runs this.
-                message = f"no microphone: {e}"
-                post(lambda: self.set_status(message))
+                self.set_status(f"no microphone: {e}")
+        async for heard in self.listener.heard():
+            self.on_heard(heard)
 
-        threading.Thread(target=open_microphone, name="microphone", daemon=True).start()
-
-    def feed_wavs(self) -> None:
+    async def feed_wavs(self) -> None:
         """--feed-wav: plays files into the listener at real-time pace, with room
         noise between them, so the segmenter and Whisper see what a mic would give."""
         rng = np.random.default_rng(0)
-        chunk = SAMPLE_RATE // 100  # 10 ms
 
-        def stream(audio: np.ndarray) -> None:
-            for i in range(0, len(audio), chunk):
-                self.listener.feed(audio[i : i + chunk], SAMPLE_RATE)
-                time.sleep(chunk / SAMPLE_RATE)
+        async def stream(audio: np.ndarray) -> None:
+            # Whatever is due by the clock, in pieces of at least 10 ms.
+            start, fed = time.perf_counter(), 0
+            while fed < len(audio):
+                due = min(len(audio), int((time.perf_counter() - start) * SAMPLE_RATE))
+                if due - fed >= SAMPLE_RATE // 100 or due == len(audio):
+                    self.listener.feed(audio[fed:due], SAMPLE_RATE)
+                    fed = due
+                await asyncio.sleep(0.01)
 
         def room(seconds: float) -> np.ndarray:
             return (rng.standard_normal(int(SAMPLE_RATE * seconds)) * 10 ** (-60 / 20)).astype(np.float32)
 
-        time.sleep(3)  # let Whisper load
+        await self.whisper_ready.wait()
         for path in self.options.feed_wav:
             with wave.open(str(path)) as wav:
                 speech = np.frombuffer(wav.readframes(wav.getnframes()), np.int16).astype(np.float32) / 32768
-            stream(room(1.5))
-            self.fed_end = time.perf_counter() + len(speech) / SAMPLE_RATE
-            stream(speech + room(len(speech) / SAMPLE_RATE))
-        stream(room(2))
+            await stream(room(1.5))
+            await stream(speech + room(len(speech) / SAMPLE_RATE))
+        await stream(room(2))
 
     # ----- every frame --------------------------------------------------------
 
-    @logged
+    async def frames(self) -> None:
+        """Steps the simulator and draws, 60 times a second, on the clock: a late
+        frame makes the next one sooner rather than pushing them all back."""
+        period = 1 / 60
+        next_frame = time.perf_counter()
+        while True:
+            self.tick()
+            next_frame = max(next_frame + period, time.perf_counter() - period)
+            await asyncio.sleep(next_frame - time.perf_counter())
+
     def tick(self) -> None:
         now = time.perf_counter()
         self.tick_gaps.append(now - self.last_tick)
         dt, self.last_tick = min(now - self.last_tick, 0.1), now
         self.robot.step(dt)
         s = self.robot.state()
-        if self.scene_ready:
+        if self.scene_ready.is_set():
             self.webview.core_webview2.post_web_message_as_json(
                 json.dumps(
                     {
@@ -327,7 +312,7 @@ class App(Application, IXamlMetadataProvider):
 
     def on_scene_message(self, message: str) -> None:
         if json.loads(message).get("ready"):
-            self.scene_ready = True
+            self.scene_ready.set()
 
     def on_heard(self, heard: Heard) -> None:
         self.robot.run(heard.parse.commands)
@@ -393,12 +378,12 @@ class App(Application, IXamlMetadataProvider):
 
     def reset(self) -> None:
         self.robot.reset()
-        if self.scene_ready:
+        if self.scene_ready.is_set():
             self.webview.core_webview2.post_web_message_as_json('{"reset": true}')
 
     def toggle_camera(self) -> None:
         self.chase = not self.chase
-        if self.scene_ready:
+        if self.scene_ready.is_set():
             self.webview.core_webview2.post_web_message_as_json(
                 json.dumps({"camera": "chase" if self.chase else "top"})
             )
@@ -407,10 +392,12 @@ class App(Application, IXamlMetadataProvider):
         self.status.text = text
 
     def shutdown(self) -> None:
-        if getattr(self, "closing", False):
-            return  # exit() closes the window, which calls this again
-        self.closing = True
-        self.timer.stop()
+        """Stops everything; the app exits once main() has finished."""
+        self.main_task.cancel()
+
+    def finished(self, task: asyncio.Task[None]) -> None:
+        if not task.cancelled() and (error := task.exception()) is not None:
+            traceback.print_exception(error)
         gaps = np.array(self.tick_gaps[30:]) * 1000  # skip start-up
         if len(gaps):
             print(
@@ -428,6 +415,7 @@ class App(Application, IXamlMetadataProvider):
             )
         self.microphone.stop()
         self.listener.close()
+        self.loop.stop()
         self.exit()
 
     # ----- XAML metadata ------------------------------------------------------
@@ -466,5 +454,8 @@ def main() -> None:
     # python.exe declares no DPI awareness, so Windows would stretch the window.
     ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per monitor v2
     init_apartment(ApartmentType.SINGLE_THREADED)
+    apps: list[App] = []
     with initialize(options=InitializeOptions.ON_NO_MATCH_SHOW_UI):
-        Application.start(lambda _: App(options))
+        Application.start(lambda _: apps.append(App(options)))
+        for app in apps:
+            app.loop.close()
