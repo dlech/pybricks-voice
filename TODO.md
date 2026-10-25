@@ -71,6 +71,13 @@ What needs improving, here and in the projects this app is built on.
       Protocol typed from the stubs' delegates, so pyright checks them as C#'s
       compiler checks code-behind. It also checks every element, attribute and
       property element against the stubs, as the compiler would. It could be a PyWinRT tool.
+- [ ] **XAML metadata from the PyWinRT generator,** for that tool to read rather than
+      the stubs' signature comments or the private `_table.pywinrt`: per package, a
+      small documented file (JSON, say) with each type's WinRT and Python names, its
+      base, its properties (type, settable, dependency or attached), its events with
+      their delegates' Python sender and arguments types already resolved, its
+      `[ContentProperty]`, and enum members. Then values can be checked too
+      (`Visibility="Colapsed"`), and children against content properties.
 - [ ] **Keyword arguments for property setters** in generated constructors, as C#'s
       object initializers (`TextBlock(text="…", font_size=12)`), plus helpers for
       attached properties, so UI built in code is as short as XAML and typed.
