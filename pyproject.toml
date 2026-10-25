@@ -26,6 +26,15 @@ dependencies = [
     "winrt-Windows.System",
     "winrt-Windows.UI",
     "winrt-Windows.UI.Xaml.Interop",
+    # --screenshot, through Windows.Graphics.Capture
+    "winrt-Microsoft.UI.Interop",
+    "winrt-Windows.Graphics.Capture",
+    "winrt-Windows.Graphics.Capture.Interop",
+    "winrt-Windows.Graphics.DirectX",
+    "winrt-Windows.Graphics.DirectX.Direct3D11",
+    "winrt-Windows.Graphics.DirectX.Direct3D11.Interop",
+    "winrt-Windows.Graphics.Imaging",
+    "winrt-Windows.Security.Authorization.AppCapabilityAccess",
     # The 3D view. Its FreeType DLL comes from tools/get_freetype.py on Windows ARM64.
     "pygfx>=0.17.0",
     # scene.py makes the SwapChainPanel surface through wgpu-py internals.
@@ -34,7 +43,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "pillow",  # --screenshot
     "pyright>=1.1.414",
     "ruff>=0.17.2",
 ]

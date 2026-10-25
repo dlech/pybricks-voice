@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import ctypes
-import ctypes.wintypes
 import logging
 import math
 import pathlib
@@ -57,6 +56,7 @@ from .grammar import describe, suggest
 from .loop import DispatcherQueueEventLoop
 from .robot import SimRobot
 from .scene import SceneView, use_d3d12
+from .screenshot import save_window
 from .speech import Heard, Listener, Microphone, Segmenter
 from .whisper import SAMPLE_RATE
 
@@ -211,31 +211,8 @@ class App(Application, IXamlMetadataProvider):
         if self.options.quit_after:
             await asyncio.sleep(self.options.quit_after - (time.perf_counter() - started))
             if self.options.screenshot:
-                self.screenshot(self.options.screenshot)
+                await save_window(self.window, self.options.screenshot)
             self.shutdown()
-
-    def screenshot(self, path: pathlib.Path) -> None:
-        """The window's own content, swap chain included, whatever is in front of it."""
-        from PIL import Image
-
-        user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
-        hwnd = ctypes.c_void_p(user32.FindWindowW(None, self.window.title))
-        rect = ctypes.wintypes.RECT()
-        user32.GetWindowRect(hwnd, ctypes.byref(rect))
-        width, height = rect.right - rect.left, rect.bottom - rect.top
-        screen = user32.GetDC(None)
-        dc = gdi32.CreateCompatibleDC(screen)
-        bitmap = gdi32.CreateCompatibleBitmap(screen, width, height)
-        gdi32.SelectObject(dc, bitmap)
-        user32.PrintWindow(hwnd, dc, 2)  # PW_RENDERFULLCONTENT
-        pixels = ctypes.create_string_buffer(width * height * 4)
-        header = (ctypes.c_uint32 * 10)(40, width, -height, 1 | (32 << 16), 0, 0, 0, 0, 0, 0)  # BITMAPINFOHEADER
-        gdi32.GetDIBits(dc, bitmap, 0, height, pixels, header, 0)
-        gdi32.DeleteObject(bitmap)
-        gdi32.DeleteDC(dc)
-        user32.ReleaseDC(None, screen)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        Image.frombuffer("RGB", (width, height), pixels.raw, "raw", "BGRX").save(path)
 
     async def speech(self) -> None:
         self.set_status("loading Whisper on the NPU…")
