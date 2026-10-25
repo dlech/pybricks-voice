@@ -3,6 +3,8 @@ name = "pybricks-voice"
 version = "0.1.0"
 description = "Drive a (simulated) Pybricks robot by voice, with Whisper on the Snapdragon NPU"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 # onnxruntime-qnn has no free-threaded (3.14t) wheels yet.
 requires-python = ">=3.12,<3.15"
 dependencies = [

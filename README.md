@@ -77,9 +77,9 @@ uv run tools/check_whisper.py      # Windows speech synthesis -> Whisper on the 
 | `tools/get_ldraw.py` | copies the parts the model uses from LDraw's library into `models/ldraw/` |
 | `spikes/` | experiments kept for their findings: Composition Scenes, the window-drag stall, LDraw previews |
 
-## Credits
+## License and credits
 
-The robot is drawn with parts from the [LDraw](https://www.ldraw.org) parts
+The code is under the MIT license: see `LICENSE`. The robot is drawn with parts from the [LDraw](https://www.ldraw.org) parts
 library, by its many authors, under
 [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): see
 `pybricks_voice/models/ldraw/CAreadme.txt`. The model follows LEGO Education's
