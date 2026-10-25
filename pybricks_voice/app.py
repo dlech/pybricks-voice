@@ -15,11 +15,9 @@ import asyncio
 import ctypes
 import json
 import pathlib
-import sys
 import time
 import traceback
 import wave
-from collections.abc import Callable
 from typing import override
 from xml.sax.saxutils import quoteattr
 
@@ -115,20 +113,6 @@ XAML = """
 """
 
 
-def logged(fn: Callable) -> Callable:
-    """XAML callbacks that raise end the process with no traceback; print it."""
-
-    def wrapper(*args):
-        try:
-            return fn(*args)
-        except BaseException:
-            traceback.print_exc()
-            sys.stderr.flush()
-            raise
-
-    return wrapper
-
-
 class App(Application, IXamlMetadataProvider):
     def __init__(self, options: argparse.Namespace) -> None:
         super().__init__()  # with constructor arguments of our own, this creates the WinRT object
@@ -147,7 +131,6 @@ class App(Application, IXamlMetadataProvider):
     # ----- start up -----------------------------------------------------------
 
     @override
-    @logged
     def _on_launched(self, args: LaunchActivatedEventArgs) -> None:
         self.resources.merged_dictionaries.append(XamlControlsResources())
         self.window = XamlReader.load(XAML).as_(Window)
