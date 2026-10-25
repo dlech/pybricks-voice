@@ -1,5 +1,5 @@
 """
-Builds a MuJoCo wheel for this machine into vendor/wheels/, for the physics.
+Builds a MuJoCo wheel for this machine into vendor/wheels/, for a release.
 
 MuJoCo publishes no Windows ARM64 builds, of the library or of its Python
 bindings, so this builds both from pinned, checksummed sources: the library
@@ -8,9 +8,13 @@ against it. The bindings are built with clang-cl, as MuJoCo's own CI builds
 its Windows wheels: with MSVC they fail to link, as it gives the code for the
 unnamed structs inside mjVisual internal linkage in one file and not another.
 
+pyproject.toml installs the wheel this built from a release of this
+repository, so `uv sync` needs nothing built here. For a new MuJoCo version:
+change VERSION and the hashes, build it, publish the wheel as a release asset,
+and point [tool.uv.sources] at its URL.
+
 Needs CMake, and a Visual Studio with the C++ workload and its "C++ Clang
-tools for Windows" component. Run it before `uv sync`, without the project's
-environment:
+tools for Windows" component. Run it without the project's environment:
 
     uv run --no-project tools/get_mujoco.py
 """

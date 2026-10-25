@@ -41,7 +41,7 @@ dependencies = [
     "pygfx>=0.17.0",
     # windows/scene_view.py makes the SwapChainPanel surface through wgpu-py internals.
     "wgpu>=0.32,<0.33",
-    # The physics. On Windows ARM64 its wheel comes from tools/get_mujoco.py.
+    # The physics. On Windows ARM64 its wheel is this repository's: see [tool.uv.sources].
     "mujoco>=3.17",
 ]
 
@@ -55,16 +55,10 @@ dev = [
 # An app, not a library: run it from the checkout.
 package = false
 
-# MuJoCo has no Windows ARM64 wheels: tools/get_mujoco.py builds one into
-# vendor/wheels/, used only there. Locking needs that wheel, on any machine.
-[[tool.uv.index]]
-name = "vendor"
-url = "vendor/wheels"
-format = "flat"
-explicit = true
-
+# MuJoCo has no Windows ARM64 wheels: there it comes from this repository's
+# release, built by tools/get_mujoco.py; elsewhere, from PyPI.
 [tool.uv.sources]
-mujoco = { index = "vendor", marker = "sys_platform == 'win32' and platform_machine == 'ARM64'" }
+mujoco = { url = "https://github.com/dlech/pybricks-voice/releases/download/mujoco-3.17.0/mujoco-3.17.0-cp314-cp314-win_arm64.whl", marker = "sys_platform == 'win32' and platform_machine == 'ARM64'" }
 
 [tool.ruff]
 line-length = 120

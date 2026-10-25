@@ -166,7 +166,8 @@ What needs improving, here and in the projects this app is built on.
 ### MuJoCo
 
 - [ ] **Windows ARM64 wheels:** neither PyPI nor the GitHub releases have them.
-      `tools/get_mujoco.py` builds them: the library with MSVC, the bindings with
+      `tools/get_mujoco.py` builds them, for this repository's mujoco-3.17.0
+      release: the library with MSVC, the bindings with
       clang-cl, as MuJoCo's CI does for Windows. With MSVC the bindings fail to
       link, since MSVC gives the code for the unnamed structs inside `mjVisual`
       internal linkage in `structs_wrappers.cc`; a fix there would make MSVC

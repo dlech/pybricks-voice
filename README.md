@@ -22,20 +22,20 @@ and ONNX Runtime's QNN provider for the NPU.
 
 - A Snapdragon X Elite PC (the Whisper model is precompiled for its NPU)
 - [uv](https://docs.astral.sh/uv/) and an ARM64 CPython 3.14 (pinned in `.python-version`)
-- Visual Studio with the C++ workload and its "C++ Clang tools for Windows", and
-  CMake, to build MuJoCo and FreeType once: neither has Windows ARM64 builds
+- Visual Studio with the C++ workload, and CMake, to build FreeType once: it has
+  no Windows ARM64 build
 
 ## Setup
 
 ```
-uv run --no-project tools/get_mujoco.py
 uv sync
 uv run tools/get_models.py
 uv run tools/get_freetype.py
 ```
 
-`get_mujoco.py` comes first: `uv sync` installs MuJoCo from the wheel it
-builds into `vendor/wheels/`.
+MuJoCo has no Windows ARM64 wheel either: `uv sync` installs the one in this
+repository's [mujoco-3.17.0](https://github.com/dlech/pybricks-voice/releases/tag/mujoco-3.17.0)
+release, which `tools/get_mujoco.py` built.
 
 ## Run
 
@@ -106,7 +106,7 @@ uv run tools/check_whisper.py      # Windows speech synthesis -> Whisper on the 
 | `pybricks_voice/macos/loop.py` | asyncio as a guest of the main thread's `CFRunLoop` |
 | `pybricks_voice/macos/corefoundation.py` | the CoreFoundation calls that needs, declared with ctypes |
 | `tools/get_freetype.py` | builds `vendor/freetype.dll` for pygfx |
-| `tools/get_mujoco.py` | builds a MuJoCo wheel into `vendor/wheels/` |
+| `tools/get_mujoco.py` | builds the MuJoCo wheel for Windows ARM64 that a release of this repository has |
 | `tools/xaml_types.py` | generates typed classes for the `.xaml` files, with their event wiring, as WinUI's compiler does for C# |
 | `tools/get_ldraw.py` | copies the parts the model uses from LDraw's library into `models/ldraw/` |
 | `spikes/` | experiments kept for their findings: Composition Scenes, the window-drag stall, LDraw previews |

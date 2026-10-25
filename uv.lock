@@ -310,7 +310,7 @@ wheels = [
 [[package]]
 name = "mujoco"
 version = "3.17.0"
-source = { registry = "vendor/wheels" }
+source = { url = "https://github.com/dlech/pybricks-voice/releases/download/mujoco-3.17.0/mujoco-3.17.0-cp314-cp314-win_arm64.whl" }
 resolution-markers = [
     "platform_machine == 'ARM64' and sys_platform == 'win32'",
 ]
@@ -323,8 +323,31 @@ dependencies = [
     { name = "websockets" },
 ]
 wheels = [
-    { path = "mujoco-3.17.0-cp314-cp314-win_arm64.whl" },
+    { url = "https://github.com/dlech/pybricks-voice/releases/download/mujoco-3.17.0/mujoco-3.17.0-cp314-cp314-win_arm64.whl", hash = "sha256:424487fcc21be621358c360ebbf4d4e5aee2a99eff6829db350e10e78ea8bd7e" },
 ]
+
+[package.metadata]
+requires-dist = [
+    { name = "absl-py" },
+    { name = "absl-py", marker = "extra == 'sysid'" },
+    { name = "colorama", marker = "extra == 'sysid'" },
+    { name = "etils", extras = ["epath"] },
+    { name = "glfw" },
+    { name = "imageio", extras = ["ffmpeg"], marker = "extra == 'sysid'" },
+    { name = "jinja2", marker = "extra == 'sysid'" },
+    { name = "matplotlib", marker = "extra == 'sysid'" },
+    { name = "numpy" },
+    { name = "pillow", marker = "extra == 'usd'" },
+    { name = "plotly", marker = "extra == 'sysid'" },
+    { name = "pyopengl" },
+    { name = "pyyaml", marker = "extra == 'sysid'" },
+    { name = "scipy", marker = "extra == 'sysid'" },
+    { name = "tabulate", marker = "extra == 'sysid'" },
+    { name = "typing-extensions", marker = "extra == 'sysid'" },
+    { name = "usd-core", marker = "extra == 'usd'" },
+    { name = "websockets", specifier = ">=13" },
+]
+provides-extras = ["sysid", "usd"]
 
 [[package]]
 name = "nodeenv"
@@ -453,7 +476,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "mujoco", version = "3.17.0", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine != 'ARM64' or sys_platform != 'win32'" },
-    { name = "mujoco", version = "3.17.0", source = { registry = "vendor/wheels" }, marker = "platform_machine == 'ARM64' and sys_platform == 'win32'" },
+    { name = "mujoco", version = "3.17.0", source = { url = "https://github.com/dlech/pybricks-voice/releases/download/mujoco-3.17.0/mujoco-3.17.0-cp314-cp314-win_arm64.whl" }, marker = "platform_machine == 'ARM64' and sys_platform == 'win32'" },
     { name = "numpy" },
     { name = "onnxruntime-qnn", marker = "sys_platform == 'win32'" },
     { name = "pygfx" },
@@ -495,7 +518,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "mujoco", marker = "platform_machine != 'ARM64' or sys_platform != 'win32'", specifier = ">=3.17" },
-    { name = "mujoco", marker = "platform_machine == 'ARM64' and sys_platform == 'win32'", specifier = ">=3.17", index = "file:///Users/david/work/pybricks-voice/vendor/wheels" },
+    { name = "mujoco", marker = "platform_machine == 'ARM64' and sys_platform == 'win32'", url = "https://github.com/dlech/pybricks-voice/releases/download/mujoco-3.17.0/mujoco-3.17.0-cp314-cp314-win_arm64.whl" },
     { name = "numpy" },
     { name = "onnxruntime-qnn", marker = "sys_platform == 'win32'", specifier = ">=2.7" },
     { name = "pygfx", specifier = ">=0.17.0" },
