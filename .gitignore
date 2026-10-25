@@ -5,5 +5,5 @@ __pycache__/
 models/
 # Screenshots and generated test audio
 out/
-# WebView2 user data
-.webview2/
+# Built by tools/get_freetype.py
+vendor/

@@ -2,8 +2,8 @@
 
 The UI thread runs asyncio as a guest of WinUI's DispatcherQueue (see
 loop.py), so the app is coroutines that touch XAML directly: one steps the
-simulator 60 times a second and sends the pose to the WebView2 scene, another
-reacts to what was heard. Two threads of their own do the rest:
+simulator 60 times a second and draws it with pygfx into a SwapChainPanel
+(see scene.py), another reacts to what was heard. Two threads of their own do the rest:
   audio thread  AudioGraph quanta -> the voice-activity segmenter
   whisper       transcribes each utterance on the NPU (a daemon thread)
 """
@@ -13,7 +13,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import ctypes
-import json
+import ctypes.wintypes
 import pathlib
 import time
 import traceback
@@ -25,6 +25,7 @@ import numpy as np
 from winrt.microsoft.ui.xaml import (
     Application,
     DispatcherShutdownMode,
+    FocusState,
     FrameworkElement,
     LaunchActivatedEventArgs,
     UIElement,
@@ -34,16 +35,15 @@ from winrt.microsoft.ui.xaml.controls import (
     Button,
     ScrollViewer,
     StackPanel,
+    SwapChainPanel,
     TextBlock,
     TextBox,
     ToggleSwitch,
-    WebView2,
     XamlControlsResources,
 )
-from winrt.microsoft.ui.xaml.input import KeyRoutedEventArgs
+from winrt.microsoft.ui.xaml.input import KeyRoutedEventArgs, PointerRoutedEventArgs
 from winrt.microsoft.ui.xaml.markup import IXamlMetadataProvider, IXamlType, XamlReader, XmlnsDefinition
 from winrt.microsoft.ui.xaml.xamltypeinfo import XamlControlsXamlMetaDataProvider
-from winrt.microsoft.web.webview2.core import CoreWebView2Environment, CoreWebView2HostResourceAccessKind
 from winrt.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import InitializeOptions, initialize
 from winrt.runtime import ApartmentType, init_apartment
 from winrt.system import Array
@@ -54,13 +54,10 @@ from winrt.windows.ui.xaml.interop import TypeKind, TypeName
 from .grammar import describe, suggest
 from .loop import DispatcherQueueEventLoop
 from .robot import SimRobot
+from .scene import SceneView, use_d3d12
 from .speech import Heard, Listener, Microphone, Segmenter
 from .whisper import SAMPLE_RATE
 
-ROOT = pathlib.Path(__file__).resolve().parent
-WEB = ROOT / "web"
-USER_DATA = ROOT.parent / ".webview2"
-HOST = "robot.local"
 LEVEL_FALL_DB_S = 30.0
 
 XAML = """
@@ -71,7 +68,18 @@ XAML = """
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="380"/>
         </Grid.ColumnDefinitions>
-        <WebView2 Name="scene"/>
+        <Grid Name="view" Background="Transparent">
+            <!-- Laid out at physical size and scaled down: see scene.py. -->
+            <Canvas Name="host">
+                <SwapChainPanel Name="panel"/>
+            </Canvas>
+            <Border Margin="12" HorizontalAlignment="Left" VerticalAlignment="Bottom" Padding="8,4"
+                    Background="#88000000" CornerRadius="4">
+                <TextBlock Name="hud" Foreground="#c9d1dc" FontFamily="Consolas"/>
+            </Border>
+            <TextBlock Margin="12,10" HorizontalAlignment="Right" VerticalAlignment="Top"
+                       Foreground="#8a94a3" Text="C: camera · scroll: zoom"/>
+        </Grid>
         <Grid Grid.Column="1" Padding="16" RowSpacing="12">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -121,7 +129,6 @@ class App(Application, IXamlMetadataProvider):
         self.robot = SimRobot()
         self.scene_ready = asyncio.Event()
         self.whisper_ready = asyncio.Event()
-        self.chase = True
         self.last_tick = time.perf_counter()
         self.tick_gaps: list[float] = []
         self.shown_pending: list | None = None
@@ -138,7 +145,8 @@ class App(Application, IXamlMetadataProvider):
         self.window.app_window.resize(SizeInt32(1600, 1000))
         content = self.window.content.as_(FrameworkElement)
         find = content.find_name
-        self.webview = find("scene").as_(WebView2)
+        self.view = SceneView(find("host").as_(FrameworkElement), find("panel").as_(SwapChainPanel))
+        self.hud = find("hud").as_(TextBlock)
         self.status = find("status").as_(TextBlock)
         self.level = find("level").as_(TextBlock)
         self.listen = find("listen").as_(ToggleSwitch)
@@ -155,6 +163,8 @@ class App(Application, IXamlMetadataProvider):
         find("reset").as_(Button).add_click(lambda s, e: self.reset())
         find("camera").as_(Button).add_click(lambda s, e: self.toggle_camera())
         self.typed.add_key_down(self.on_typed_key)
+        content.add_key_down(self.on_key)
+        find("view").as_(FrameworkElement).add_pointer_wheel_changed(self.on_wheel)
         self.listen.add_toggled(lambda s, e: setattr(self.listener, "muted", not self.listen.is_on))
         self.window.add_closed(lambda s, e: self.shutdown())
 
@@ -173,7 +183,6 @@ class App(Application, IXamlMetadataProvider):
     async def main(self) -> None:
         async with asyncio.TaskGroup() as tasks:
             tasks.create_task(self.frames())
-            tasks.create_task(self.scene())
             tasks.create_task(self.speech())
             if self.options.feed_wav:
                 tasks.create_task(self.feed_wavs())
@@ -193,24 +202,27 @@ class App(Application, IXamlMetadataProvider):
             self.shutdown()
 
     def screenshot(self, path: pathlib.Path) -> None:
-        from PIL import ImageGrab
+        """The window's own content, swap chain included, whatever is in front of it."""
+        from PIL import Image
 
-        pos, size = self.window.app_window.position, self.window.app_window.size
+        user32, gdi32 = ctypes.windll.user32, ctypes.windll.gdi32
+        hwnd = ctypes.c_void_p(user32.FindWindowW(None, self.window.title))
+        rect = ctypes.wintypes.RECT()
+        user32.GetWindowRect(hwnd, ctypes.byref(rect))
+        width, height = rect.right - rect.left, rect.bottom - rect.top
+        screen = user32.GetDC(None)
+        dc = gdi32.CreateCompatibleDC(screen)
+        bitmap = gdi32.CreateCompatibleBitmap(screen, width, height)
+        gdi32.SelectObject(dc, bitmap)
+        user32.PrintWindow(hwnd, dc, 2)  # PW_RENDERFULLCONTENT
+        pixels = ctypes.create_string_buffer(width * height * 4)
+        header = (ctypes.c_uint32 * 10)(40, width, -height, 1 | (32 << 16), 0, 0, 0, 0, 0, 0)  # BITMAPINFOHEADER
+        gdi32.GetDIBits(dc, bitmap, 0, height, pixels, header, 0)
+        gdi32.DeleteObject(bitmap)
+        gdi32.DeleteDC(dc)
+        user32.ReleaseDC(None, screen)
         path.parent.mkdir(parents=True, exist_ok=True)
-        ImageGrab.grab((pos.x, pos.y, pos.x + size.width, pos.y + size.height), all_screens=True).save(path)
-
-    async def scene(self) -> None:
-        USER_DATA.mkdir(exist_ok=True)
-        try:
-            environment = await CoreWebView2Environment.create_with_options_async("", str(USER_DATA), None)
-            await self.webview.ensure_core_webview2_async(environment)
-        except OSError as e:
-            self.set_status(f"WebView2 failed: {e}")
-            return
-        core = self.webview.core_webview2
-        core.set_virtual_host_name_to_folder_mapping(HOST, str(WEB), CoreWebView2HostResourceAccessKind.ALLOW)
-        core.add_web_message_received(lambda s, e: self.on_scene_message(e.web_message_as_json))
-        core.navigate(f"https://{HOST}/scene.html")
+        Image.frombuffer("RGB", (width, height), pixels.raw, "raw", "BGRX").save(path)
 
     async def speech(self) -> None:
         self.set_status("loading Whisper on the NPU…")
@@ -269,18 +281,14 @@ class App(Application, IXamlMetadataProvider):
         dt, self.last_tick = min(now - self.last_tick, 0.1), now
         self.robot.step(dt)
         s = self.robot.state()
-        self.post_to_scene(
-            {
-                "pose": {
-                    "x": s.x,
-                    "y": s.y,
-                    "heading": s.heading,
-                    "left": s.left_angle,
-                    "right": s.right_angle,
-                    "speed": s.speed,
-                }
-            }
-        )
+        self.view.draw(s)
+        if self.view.ready:
+            self.scene_ready.set()
+        # Rounded first, then + 0.0, which turns -0.0 into 0.0: no "-0.0 cm" or "-0°".
+        x, y, heading = (round(s.x / 10, 1) + 0.0), (round(s.y / 10, 1) + 0.0), round(s.heading)
+        hud = f"x {x:.1f} cm · y {y:.1f} cm · heading {heading}° · {s.speed / 10:.0f} cm/s"
+        if hud != self.hud.text:
+            self.hud.text = hud
         pending = ([s.current] if s.current else []) + s.queued
         if pending != self.shown_pending:  # only when it changes, not 60 times a second
             self.shown_pending = pending
@@ -296,10 +304,6 @@ class App(Application, IXamlMetadataProvider):
                 self.level.text = text
 
     # ----- events -------------------------------------------------------------
-
-    def on_scene_message(self, message: str) -> None:
-        if json.loads(message).get("ready"):
-            self.scene_ready.set()
 
     def on_heard(self, heard: Heard) -> None:
         self.robot.run(heard.parse.commands)
@@ -363,23 +367,21 @@ class App(Application, IXamlMetadataProvider):
         if e.key == VirtualKey.ENTER:
             self.submit_typed()
 
+    def on_key(self, sender, e: KeyRoutedEventArgs) -> None:
+        if e.key == VirtualKey.C and self.typed.focus_state == FocusState.UNFOCUSED:
+            self.toggle_camera()
+
+    def on_wheel(self, sender, e: PointerRoutedEventArgs) -> None:
+        delta = e.get_current_point(self.hud).properties.mouse_wheel_delta
+        scene = self.view.scene
+        scene.zoom = min(4.0, max(0.3, scene.zoom * (0.9 if delta > 0 else 1.1)))  # up is closer
+
     def reset(self) -> None:
         self.robot.reset()
-        self.post_to_scene({"reset": True})
+        self.view.scene.reset()
 
     def toggle_camera(self) -> None:
-        self.chase = not self.chase
-        self.post_to_scene({"camera": "chase" if self.chase else "top"})
-
-    def post_to_scene(self, message: dict) -> None:
-        if not self.scene_ready.is_set():
-            return
-        try:
-            self.webview.core_webview2.post_web_message_as_json(json.dumps(message))
-        except OSError:
-            # The WebView2 closes as the window does, before the window's closed
-            # event; a frame drawn in between mustn't take the app down with it.
-            self.scene_ready.clear()
+        self.view.scene.chase = not self.view.scene.chase
 
     def set_status(self, text: str) -> None:
         self.status.text = text
@@ -444,6 +446,7 @@ def main() -> None:
     parser.add_argument("--record", type=pathlib.Path, help="save every utterance (WAV + text) to this folder")
     options = parser.parse_args()
 
+    print(f"3D view on {use_d3d12()} (D3D12)", flush=True)
     # python.exe declares no DPI awareness, so Windows would stretch the window.
     ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per monitor v2
     init_apartment(ApartmentType.SINGLE_THREADED)
