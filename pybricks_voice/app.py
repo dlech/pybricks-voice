@@ -175,7 +175,7 @@ class App(Application, IXamlMetadataProvider):
         self.typed.add_key_down(self.on_typed_key)
         content.add_key_down(self.on_key)
         find("view").as_(FrameworkElement).add_pointer_wheel_changed(self.on_wheel)
-        self.listen.add_toggled(lambda s, e: setattr(self.listener, "muted", not self.listen.is_on))
+        self.listen.add_toggled(lambda s, e: self.set_listening(self.listen.is_on))
         self.window.add_closed(lambda s, e: self.shutdown())
 
         # Closing the window starts shutdown(), and the app exits once main() has
@@ -238,14 +238,37 @@ class App(Application, IXamlMetadataProvider):
         self.set_status("loading Whisper on the NPU…")
         load_s = await self.listener.start()
         self.whisper_ready.set()
-        self.set_status(f"listening (Whisper loaded in {load_s:.1f} s)")
-        if not self.options.no_mic:
-            try:
-                await self.microphone.start()
-            except Exception as e:
-                self.set_status(f"no microphone: {e}")
+        self.set_status(f"Whisper loaded in {load_s:.1f} s")
+        if self.listen.is_on:
+            await self.open_microphone()
         async for heard in self.listener.heard():
             self.on_heard(heard)
+
+    async def open_microphone(self) -> None:
+        if self.options.no_mic or self.microphone.graph is not None:
+            return
+        try:
+            await self.microphone.start()
+        except Exception as e:
+            self.set_status(f"no microphone: {e}")
+            return
+        if not self.listen.is_on:  # switched off while it was opening
+            self.microphone.stop()
+
+    def set_listening(self, on: bool) -> None:
+        """Off closes the microphone, so Windows no longer shows it in use, and
+        drops whatever was half heard; on opens it again."""
+        self.listener.muted = not on
+        if on:
+            if self.whisper_ready.is_set():
+                self.microphone_task = self.loop.create_task(self.open_microphone())
+            return
+        self.microphone.stop()
+        self.listener.segmenter = None
+        self.level_db = -120.0
+        self.level.value = self.level.minimum
+        self.level_text.text = ""
+        self.speaking.opacity = 0.0
 
     async def feed_wavs(self) -> None:
         """--feed-wav: plays files into the listener at real-time pace, with room
@@ -304,7 +327,7 @@ class App(Application, IXamlMetadataProvider):
             self.shown_pending = pending
             self.queue_text.text = ("Now: " + describe(pending)) if pending else "Waiting for a command"
         seg = self.listener.segmenter
-        if seg is not None:
+        if seg is not None and not self.listener.muted:
             self.show_level(seg.level_db, seg.speaking, dt, now)
 
     def show_level(self, level_db: float, speaking: bool, dt: float, now: float) -> None:
