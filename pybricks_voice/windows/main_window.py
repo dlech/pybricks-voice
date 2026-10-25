@@ -5,7 +5,10 @@
 from __future__ import annotations
 
 import pathlib
+import sys
 import typing
+
+assert not typing.TYPE_CHECKING or sys.platform == "win32"
 
 from typing_extensions import Sentinel
 from winrt.microsoft.ui.xaml import (

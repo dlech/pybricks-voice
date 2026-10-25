@@ -24,15 +24,20 @@ IocpProactor with the body of its _poll() split in two, as qasync does for Qt.
 
 from __future__ import annotations
 
-import _overlapped
-import _winapi
 import asyncio
 import collections
+import sys
 import threading
-from asyncio import events, windows_events
+from asyncio import events
 from collections.abc import Callable
 from datetime import timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+assert not TYPE_CHECKING or sys.platform == "win32"
+
+import _overlapped
+import _winapi
+from asyncio import windows_events
 
 from winrt.microsoft.ui.dispatching import DispatcherQueue
 

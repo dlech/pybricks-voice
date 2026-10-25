@@ -1,10 +1,14 @@
 import ctypes
 import pathlib
+import sys
 import tempfile
 import unittest
 from ctypes import wintypes
+from typing import TYPE_CHECKING
 
-from pybricks_voice import placement
+assert not TYPE_CHECKING or sys.platform == "win32"
+
+from pybricks_voice.windows import placement
 
 _user32 = ctypes.WinDLL("user32", use_last_error=True)
 _user32.CreateWindowExW.restype = wintypes.HWND

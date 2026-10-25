@@ -14,7 +14,11 @@ import json
 import logging
 import os
 import pathlib
+import sys
 from ctypes import wintypes
+from typing import TYPE_CHECKING
+
+assert not TYPE_CHECKING or sys.platform == "win32"
 
 log = logging.getLogger(__name__)
 

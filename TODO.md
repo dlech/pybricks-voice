@@ -23,7 +23,7 @@ What needs improving, here and in the projects this app is built on.
       as `get_mujoco.py` does for MuJoCo, until freetype-py#210 ships one.
 - [ ] **The 3D view looks slightly soft,** probably pygfx's antialiasing filter. Try
       its pixel filter settings.
-- [x] **Screenshot device:** `screenshot.py` uses PyWinRT's `create_direct3d11_device()`
+- [x] **Screenshot device:** `windows/screenshot.py` uses PyWinRT's `create_direct3d11_device()`
       rather than ctypes.
 - [x] **Physics:** the robot is simulated with MuJoCo (rigid bodies, wheel slip,
       pushing things). Still to do: use it for the "goals in the scene" milestone,
@@ -40,20 +40,20 @@ What needs improving, here and in the projects this app is built on.
       4.1.0 ([pywinrt#159](https://github.com/pywinrt/pywinrt/pull/159), asked for in
       [pywinrt#78](https://github.com/pywinrt/pywinrt/issues/78)).
 - [ ] **A pointer from an `InterfaceCapsule`:** `winrt.runtime.interop` makes and wraps
-      capsules but can't read one, so `scene.py` uses ctypes' `PyCapsule_GetPointer`
+      capsules but can't read one, so `windows/scene_view.py` uses ctypes' `PyCapsule_GetPointer`
       to hand `ISwapChainPanelNative` to wgpu. Something like
       `interface_pointer(capsule) -> int`, for any native library (wgpu, Skia, ctypes).
 - [ ] **`winrt-Microsoft.UI.Xaml.Media.DXInterop`,** like the Direct3D11 interop: what
       `microsoft.ui.xaml.media.dxinterop.h` declares, `ISwapChainPanelNative`
       (`set_swap_chain`, which works only on the UI thread) and the
-      `ISurfaceImageSourceNative` family, with their IIDs, which `scene.py` copies
+      `ISurfaceImageSourceNative` family, with their IIDs, which `windows/scene_view.py` copies
       from the header by hand. For apps that bring their own Direct3D.
-- [ ] **The guest asyncio loop** (`pybricks_voice/loop.py`) in `winrt-runtime`, with its
+- [ ] **The guest asyncio loop** (`pybricks_voice/windows/loop.py`) in `winrt-runtime`, with its
       tests.
 - [ ] **A WinUI startup helper** for unpackaged apps: DPI awareness (`python.exe`'s
       manifest declares none), AppUserModelID, apartment and bootstrap, the
       `IXamlMetadataProvider` boilerplate, and remembering the window's placement
-      (`pybricks_voice/placement.py`), which WinUI 3 doesn't do as UWP did.
+      (`pybricks_voice/windows/placement.py`), which WinUI 3 doesn't do as UWP did.
 - [ ] **The guest loop's timer is coarse:** its `DispatcherQueueTimer` fires on the
       system's ~15.6 ms tick, so a 16 ms `asyncio.sleep` often takes 31 or 47 ms
       (see `spikes/drag_stall.py`). The iocp-handoff thread could wait with a
@@ -86,7 +86,7 @@ What needs improving, here and in the projects this app is built on.
       `DataTemplate` binds with `py:` too, to each item (`py:Item="ChatItem"` names
       their Protocol). The generated class sets them in the repeater's
       `ElementPrepared`, so neither `IDataTemplateComponent` nor `{Binding}` was
-      needed. Its `ItemsSource` is `pybricks_voice/observable_list.py`.
+      needed. Its `ItemsSource` is `pybricks_voice/windows/observable_list.py`.
 - [ ] **Events in a DataTemplate,** a button on a bubble say: the generator rejects
       them. The `_prepare_` method could wire them to a code-behind handler that
       also gets the item, and must not wire one twice as the repeater recycles
@@ -97,14 +97,14 @@ What needs improving, here and in the projects this app is built on.
       `INotifyCollectionChanged` Python implements) and the generated class
       would listen; for XAML's own `{Binding}`, PyWinRT would also have to let
       Python objects be `ICustomPropertyProvider`.
-- [ ] **An observable list,** `ObservableList` as in `pybricks_voice/observable_list.py`:
+- [ ] **An observable list,** `ObservableList` as in `pybricks_voice/windows/observable_list.py`:
       a Python list that implements WinUI's non-generic `IBindableVector` and
       `INotifyCollectionChanged`, as C#'s `ObservableCollection` does. PyWinRT can't
       implement `IObservableVector<T>`, being generic, so every app that shows a
       list would otherwise write this.
 - [ ] **An event helper** for Python classes that implement a WinRT event, as
       C++/WinRT's `winrt::event` or C#'s `event` keyword: `Event[H]` with `add()`,
-      `remove()` and calling it, as in `pybricks_voice/winrt_event.py`, so no one
+      `remove()` and calling it, as in `pybricks_voice/windows/winrt_event.py`, so no one
       writes the handler dict and tokens again.
 - [ ] **Event tokens for implementers:** `EventRegistrationToken` can't be made in
       Python ("WinRT issues a token", say the stubs), but an implementation of
@@ -132,13 +132,13 @@ What needs improving, here and in the projects this app is built on.
 
 - [ ] **A supported way to present into a WinUI `SwapChainPanel`:** wgpu-native has
       `WGPUSurfaceSourceSwapChainPanel`, but wgpu-py only makes surfaces from window
-      handles, so `scene.py` wraps its `get_surface_id_from_info` (and pins wgpu).
+      handles, so `windows/scene_view.py` wraps its `get_surface_id_from_info` (and pins wgpu).
       First of the three: rendercanvas's backend needs it.
 
 ### rendercanvas
 
 - [ ] **A WinUI backend,** `rendercanvas.winui`, with PyWinRT as an optional
-      dependency: `scene.py`'s `SwapChainPanelCanvas` and most of `SceneView`, the
+      dependency: `windows/scene_view.py`'s `SwapChainPanelCanvas` and most of `SceneView`, the
       parts every app would otherwise find again. The panel laid out at physical
       size and scaled back down, the display's scale followed through
       `XamlRoot.Changed`, the first frame drawn on the UI thread (`SetSwapChain`
@@ -149,7 +149,7 @@ What needs improving, here and in the projects this app is built on.
 
 - [ ] **The swap chain ignores the display scale:** wgpu's Direct3D 12 backend doesn't
       call `IDXGISwapChain2::SetMatrixTransform` with the inverse of the panel's
-      composition scale, so `scene.py` lays the panel out at physical size and
+      composition scale, so `windows/scene_view.py` lays the panel out at physical size and
       scales it back down; rendercanvas's backend would have to as well.
 
 ### pygfx

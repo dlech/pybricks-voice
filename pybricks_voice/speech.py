@@ -1,10 +1,10 @@
 """
 Microphone -> utterances -> Whisper -> commands, off the UI thread.
 
-The microphone comes in through WinRT's AudioGraph; each AudioFrame's buffer
-is read into NumPy through PyWinRT 4.0's buffer protocol. A small
-voice-activity detector cuts the stream into utterances by loudness against
-the room's own noise floor, and each utterance is transcribed once.
+Each platform brings its microphone (windows/microphone.py) and its Whisper
+(windows/whisper_qnn.py); the rest is shared. A small voice-activity
+detector cuts the stream into utterances by loudness against the room's own
+noise floor, and each utterance is transcribed once.
 """
 
 from __future__ import annotations
@@ -21,12 +21,12 @@ import wave
 from collections import deque
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import numpy as np
 
 from .grammar import Conversation, Parse
-from .whisper import SAMPLE_RATE, Timing, Whisper
+from .whisper import SAMPLE_RATE, Timing, Transcriber
 
 log = logging.getLogger(__name__)
 
@@ -120,73 +120,20 @@ def resample(audio: np.ndarray, rate: int, target: int = SAMPLE_RATE) -> np.ndar
 # ----- microphone ----------------------------------------------------------
 
 
-class Microphone:
-    """The default capture device through AudioGraph, as mono float32."""
+class Microphone(Protocol):
+    """
+    The default capture device, as each platform opens it: it calls back
+    with mono float32 samples at its own rate, on a thread of its own.
+    """
 
-    def __init__(self, on_samples: Callable[[np.ndarray], None]) -> None:
-        self.on_samples = on_samples
-        self.graph = None
-        self.rate = 0
+    rate: int
 
-    async def start(self) -> None:
-        from winrt.windows.media import AudioBufferAccessMode  # noqa: F401 (used in _quantum)
-        from winrt.windows.media.audio import (
-            AudioDeviceNodeCreationStatus,
-            AudioGraph,
-            AudioGraphCreationStatus,
-            AudioGraphSettings,
-        )
-        from winrt.windows.media.capture import MediaCategory
-        from winrt.windows.media.render import AudioRenderCategory
+    async def start(self) -> None: ...
 
-        result = await AudioGraph.create_async(AudioGraphSettings(AudioRenderCategory.SPEECH))
-        if result.status != AudioGraphCreationStatus.SUCCESS:
-            raise RuntimeError(f"AudioGraph: {result.status.name}")
-        self.graph = result.graph
-        node = await self.graph.create_device_input_node_async(MediaCategory.SPEECH)
-        if node.status != AudioDeviceNodeCreationStatus.SUCCESS:
-            raise RuntimeError(f"microphone: {node.status.name}")
-        self.output = self.graph.create_frame_output_node()
-        node.device_input_node.add_outgoing_connection(self.output)
-        props = self.output.encoding_properties
-        self.rate, self.channels = props.sample_rate, props.channel_count
-        self.energy = np.zeros(self.channels)
-        log.info("microphone: %s %d Hz × %d channels", props.subtype, self.rate, self.channels)
-        self.graph.add_quantum_started(self._quantum)
-        self.graph.start()
-
-    def _quantum(self, graph, _) -> None:
-        from winrt.windows.media import AudioBufferAccessMode
-
-        frame = self.output.get_frame()
-        with (
-            frame.lock_buffer(AudioBufferAccessMode.READ) as buffer,
-            buffer.create_reference() as reference,
-            memoryview(reference) as view,  # the buffer protocol, new in PyWinRT 4.0
-        ):
-            # Copied out while the view is open: PyWinRT won't close a reference
-            # whose memory an array still holds.
-            frames = np.frombuffer(view, np.float32)[: buffer.length // 4].reshape(-1, self.channels)
-            # With MediaCategory.SPEECH, Windows' voice processing puts its output on
-            # one channel of the array and leaves the rest silent (channel 2 of 8 on a
-            # Surface Pro), so averaging divided the voice by 8. Use the channel with
-            # the most energy, which is the processed one.
-            if len(frames):  # the first quanta can be empty
-                self.energy = 0.95 * self.energy + 0.05 * np.mean(frames * frames, axis=0)
-            mono = frames[:, int(np.argmax(self.energy))].copy()
-            del frames  # it still exports the view, which must be released before it closes
-        if len(mono):
-            self.on_samples(mono)
+    def stop(self) -> None: ...
 
     @property
-    def channel(self) -> int:
-        return int(np.argmax(self.energy))
-
-    def stop(self) -> None:
-        if self.graph is not None:
-            self.graph.stop()
-            self.graph.close()
-            self.graph = None
+    def is_open(self) -> bool: ...
 
 
 # ----- the pipeline --------------------------------------------------------
@@ -227,10 +174,10 @@ class Listener:
     """
     Turns speech into Heard, for an asyncio event loop.
 
-    feed() takes audio from any thread (the microphone's is WinRT's own); the
-    segmenter cuts it into utterances there, and each is handed to the loop.
-    Whisper runs on a daemon thread of its own, since its NPU sessions are
-    used from one thread, so the loop's thread never waits on it, and quitting
+    feed() takes audio from any thread (the microphone's own); the segmenter
+    cuts it into utterances there, and each is handed to the loop. Whisper,
+    made by load(), runs on a daemon thread of its own, since its NPU sessions
+    are used from one thread, so the loop's thread never waits on it, and quitting
     never waits for a transcription to finish:
 
         await listener.start()
@@ -238,21 +185,22 @@ class Listener:
             ...
     """
 
-    def __init__(self, loop: asyncio.AbstractEventLoop) -> None:
+    def __init__(self, loop: asyncio.AbstractEventLoop, load: Callable[[], Transcriber]) -> None:
         self._loop = loop
+        self._load = load
         self._items: asyncio.Queue[tuple[np.ndarray, int, float] | str] = asyncio.Queue()
         self._jobs: queue.SimpleQueue[tuple[Callable[[], Any], asyncio.Future[Any]] | None] = queue.SimpleQueue()
         self._thread = threading.Thread(target=self._run_jobs, name="whisper", daemon=True)
         self._thread.start()
-        self._whisper: Whisper | None = None
+        self._whisper: Transcriber | None = None
         self.conversation = Conversation()
         self.segmenter: Segmenter | None = None
         self.muted = False
         self.record_dir: pathlib.Path | None = None  # set to keep every utterance, for debugging
 
     async def start(self) -> float:
-        """Loads Whisper onto the NPU; returns how long that took, in seconds."""
-        self._whisper = await self._on_whisper_thread(Whisper)
+        """Loads Whisper onto its device; returns how long that took, in seconds."""
+        self._whisper = await self._on_whisper_thread(self._load)
         return self._whisper.load_s
 
     def feed(self, samples: np.ndarray, rate: int) -> None:

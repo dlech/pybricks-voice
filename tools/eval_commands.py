@@ -13,6 +13,9 @@ import asyncio
 import pathlib
 import sys
 import wave
+from typing import TYPE_CHECKING
+
+assert not TYPE_CHECKING or sys.platform == "win32"
 
 import numpy as np
 
@@ -23,7 +26,8 @@ from winrt.windows.media.speechsynthesis import SpeechSynthesizer
 
 from pybricks_voice.grammar import parse
 from pybricks_voice.robot import Drive, SetSpeed, Stop, Straight, Turn
-from pybricks_voice.whisper import SAMPLE_RATE, Whisper
+from pybricks_voice.whisper import SAMPLE_RATE
+from pybricks_voice.windows.whisper_qnn import Whisper
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "out" / "eval"
 

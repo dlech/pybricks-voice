@@ -15,9 +15,12 @@ It is the kind of thing PyWinRT could ship.
 from __future__ import annotations
 
 import operator
+import sys
 import typing
 from collections.abc import Iterator
-from typing import override
+from typing import TYPE_CHECKING, override
+
+assert not TYPE_CHECKING or sys.platform == "win32"
 
 from winrt.microsoft.ui.xaml.interop import (
     IBindableIterator,

@@ -1,7 +1,7 @@
 """
 Generates typed Python classes for XAML files, as WinUI's compiler does for C#.
 
-For each pybricks_voice/*.xaml, writes a .py next to it with a class that
+For each pybricks_voice/windows/*.xaml, writes a .py next to it with a class that
 loads the XAML and has an attribute, of the element's WinRT type, for each
 element with a Name (or x:Name). So pyright checks every use, and a name
 that isn't in the XAML fails here rather than when the app runs.
@@ -23,7 +23,7 @@ code-behind. The template names its items' protocol, <DataTemplate
 py:Item="ChatItem">, and the class sets the bound properties of each item's
 elements as an ItemsRepeater prepares them (ElementPrepared), with the items
 typed by that protocol. The repeater's ItemsSource is any list XAML reads,
-such as pybricks_voice.observable_list.ObservableList.
+such as pybricks_voice.windows.observable_list.ObservableList.
 
 First it checks the XAML the way WinUI's compiler would, against the WinRT
 signatures the stubs have in comments: every element is a WinUI type, every
@@ -53,7 +53,7 @@ import sys
 import xml.etree.ElementTree as ElementTree
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-PACKAGE = ROOT / "pybricks_voice"
+PACKAGE = ROOT / "pybricks_voice" / "windows"
 PRESENTATION = "http://schemas.microsoft.com/winfx/2006/xaml/presentation"
 X = "http://schemas.microsoft.com/winfx/2006/xaml"
 PY = "https://pybricks.com/pybricks-voice/xaml"  # handlers: py:Event="handler"
@@ -420,7 +420,10 @@ def generate(xaml: pathlib.Path) -> str:
         "from __future__ import annotations",
         "",
         "import pathlib",
+        "import sys",
         "import typing",
+        "",
+        'assert not typing.TYPE_CHECKING or sys.platform == "win32"',
         "",
         *(f"from {module} import {', '.join(sorted(names))}" for module, names in sorted(imports.items())),
         "",

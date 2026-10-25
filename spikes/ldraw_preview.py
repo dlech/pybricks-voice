@@ -19,7 +19,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from rendercanvas.offscreen import RenderCanvas
 
 from pybricks_voice.ldraw import LDU, Library, normals
-from pybricks_voice.scene import gfx, use_d3d12  # pygfx, once scene.py has found its FreeType DLL
+from pybricks_voice.scene import gfx  # pygfx, once scene.py has found its FreeType DLL
+from pybricks_voice.windows.scene_view import use_d3d12
 
 PARTS = [  # file, color, where it goes (cm, scene frame)
     ("45601c01.dat", 15, (0, 0, 0)),

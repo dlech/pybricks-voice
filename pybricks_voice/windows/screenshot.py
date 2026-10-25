@@ -13,6 +13,10 @@ import asyncio
 import contextlib
 import logging
 import pathlib
+import sys
+from typing import TYPE_CHECKING
+
+assert not TYPE_CHECKING or sys.platform == "win32"
 
 from winrt.microsoft.ui.interop import get_window_from_window_id
 from winrt.microsoft.ui.xaml import Window

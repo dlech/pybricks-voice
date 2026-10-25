@@ -4,7 +4,7 @@
 
 `scenes_spike.py` draws the robot with `Microsoft.UI.Composition.Scenes`, the
 Windows App SDK's own 3D, instead of pygfx. It was set aside for pygfx in a
-`SwapChainPanel` (see `pybricks_voice/scene.py`). What it found, none of it in
+`SwapChainPanel` (see `pybricks_voice/windows/scene_view.py`). What it found, none of it in
 Microsoft's documentation:
 
 - **No camera, and no control over lighting:** a `SceneVisual` takes a whole
@@ -36,7 +36,7 @@ uv run --no-sync python spikes/scenes_spike.py --seconds 8 --screenshot out/scen
 
 ## Drag stall
 
-`drag_stall.py` finds out why the guest asyncio loop (`pybricks_voice/loop.py`)
+`drag_stall.py` finds out why the guest asyncio loop (`pybricks_voice/windows/loop.py`)
 stalls for 150-350 ms each time a window drag starts. A WinUI window ticks every
 16 ms and logs every gap over 40 ms with what the UI thread did meanwhile: the
 loop's work items and timer, each message it takes from its queue or is sent

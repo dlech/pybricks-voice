@@ -25,8 +25,12 @@ It is the kind of thing PyWinRT could ship, next to the delegate types.
 """
 
 import itertools
+import sys
 import typing
 from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+assert not TYPE_CHECKING or sys.platform == "win32"
 
 from winrt.windows.foundation import EventRegistrationToken
 

@@ -38,7 +38,7 @@ from winrt.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import
 from winrt.runtime import ApartmentType, init_apartment
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-from pybricks_voice import loop as guest
+from pybricks_voice.windows import loop as guest
 
 CDB = pathlib.Path(r"C:\Program Files (x86)\Windows Kits\10\Debuggers\arm64\cdb.exe")
 SYMBOLS = r"srv*C:\symbols*https://msdl.microsoft.com/download/symbols"

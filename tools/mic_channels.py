@@ -7,6 +7,9 @@ Usage: uv run tools/mic_channels.py [seconds]
 import asyncio
 import pathlib
 import sys
+from typing import TYPE_CHECKING
+
+assert not TYPE_CHECKING or sys.platform == "win32"
 
 import numpy as np
 

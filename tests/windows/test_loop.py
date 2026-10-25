@@ -2,18 +2,21 @@ import asyncio
 import contextlib
 import ctypes
 import socket
+import sys
 import threading
 import time
 import unittest
 from collections.abc import Callable, Coroutine
 from ctypes import wintypes
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+assert not TYPE_CHECKING or sys.platform == "win32"
 
 from winrt.microsoft.ui.dispatching import DispatcherQueue, DispatcherQueueController
 from winrt.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import initialize
 from winrt.windows.storage.streams import DataWriter, InMemoryRandomAccessStream
 
-from pybricks_voice.loop import DispatcherQueueEventLoop
+from pybricks_voice.windows.loop import DispatcherQueueEventLoop
 
 _user32 = ctypes.WinDLL("user32", use_last_error=True)
 _user32.MessageBoxW.argtypes = [wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.UINT]

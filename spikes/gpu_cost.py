@@ -21,7 +21,8 @@ import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from pybricks_voice.physics import Physics
-from pybricks_voice.scene import RobotScene, gfx, use_d3d12
+from pybricks_voice.scene import RobotScene, gfx
+from pybricks_voice.windows.scene_view import use_d3d12
 
 
 def gpu_percent(seconds: float, out: list[float]) -> None:

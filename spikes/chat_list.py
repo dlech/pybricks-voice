@@ -47,8 +47,8 @@ from winrt.windows.foundation import EventRegistrationToken, IStringable
 from winrt.windows.ui.xaml.interop import TypeKind, TypeName
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-from pybricks_voice.loop import DispatcherQueueEventLoop
-from pybricks_voice.screenshot import save_window
+from pybricks_voice.windows.loop import DispatcherQueueEventLoop
+from pybricks_voice.windows.screenshot import save_window
 
 log = logging.getLogger("chat_list")
 

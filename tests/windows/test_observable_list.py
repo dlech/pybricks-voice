@@ -1,9 +1,13 @@
 import contextlib
 import functools
 import queue
+import sys
 import threading
 import unittest
 from collections.abc import Callable
+from typing import TYPE_CHECKING
+
+assert not TYPE_CHECKING or sys.platform == "win32"
 
 from winrt.microsoft.ui.dispatching import DispatcherQueueController
 from winrt.microsoft.ui.xaml.hosting import WindowsXamlManager
@@ -17,8 +21,8 @@ from winrt.runtime import ApartmentType, init_apartment
 from winrt.system import Object
 from winrt.windows.foundation import IStringable
 
-from pybricks_voice.observable_list import ObservableList
-from pybricks_voice.winrt_event import Event
+from pybricks_voice.windows.observable_list import ObservableList
+from pybricks_voice.windows.winrt_event import Event
 
 _runtime = contextlib.ExitStack()
 _xaml_work: queue.Queue[Callable[[], None] | None] = queue.Queue()
