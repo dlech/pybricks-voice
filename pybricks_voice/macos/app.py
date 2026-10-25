@@ -4,7 +4,8 @@ rubicon-objc.
 
 NSApplication's run() owns the main thread, and asyncio runs as its guest
 (see loop.py); the 3D view draws into a CAMetalLayer (see scene_view.py).
-Whisper comes later: the microphone's level shows, and typed commands work.
+Whisper runs through Core ML, on the CPU at first and on the Neural Engine
+once it's ready (see whisper_coreml.py).
 
 The AppKit calls aren't type checked yet: rubicon-objc has no types for the
 frameworks, which generated bindings will bring.
@@ -44,6 +45,7 @@ from .corefoundation import CFRunLoopGetMain, CFRunLoopRunInMode, kCFRunLoopDefa
 from .loop import CFRunLoopEventLoop
 from .microphone import AVAudioEngineMicrophone
 from .scene_view import SceneView
+from .whisper_coreml import CoreMLWhisper
 
 log = logging.getLogger(__name__)
 
@@ -234,7 +236,7 @@ def _rounded(view: Any, radius: float, color: Any) -> Any:
 class MacApp(Core):
     """The window, its controls, and the chat, around Core."""
 
-    WHISPER_ON = "on the Neural Engine"
+    WHISPER_ON = "on the CPU"
 
     def __init__(self, options: argparse.Namespace) -> None:
         super().__init__(options)
@@ -437,7 +439,11 @@ class MacApp(Core):
 
     @override
     def load_whisper(self) -> Transcriber:
-        raise RuntimeError("not on macOS yet")
+        def ready(seconds: float) -> None:
+            text = f"Whisper on the Neural Engine, prepared in {seconds:.1f} s"
+            self.loop.call_soon_threadsafe(self.set_status, text)
+
+        return CoreMLWhisper(on_neural_engine=ready)
 
     @override
     def update_view(self) -> None:

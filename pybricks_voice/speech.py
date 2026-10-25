@@ -198,6 +198,11 @@ class Listener:
         self.muted = False
         self.record_dir: pathlib.Path | None = None  # set to keep every utterance, for debugging
 
+    @property
+    def whisper(self) -> Transcriber | None:
+        """Whisper, once start() has loaded it."""
+        return self._whisper
+
     async def start(self) -> float:
         """Loads Whisper onto its device; returns how long that took, in seconds."""
         self._whisper = await self._on_whisper_thread(self._load)

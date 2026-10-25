@@ -1,7 +1,9 @@
 """
-Whisper's features and tokens, the parts every backend shares: 30 s of 16 kHz
-audio as log-mel features in, token ids back to text out. Running the model
-is each platform's: windows/whisper_qnn.py on the Snapdragon's NPU.
+Whisper's features, decoding and tokens, the parts every backend shares: 30 s
+of 16 kHz audio as log-mel features in, greedy decoding one token at a time,
+token ids back to text out. Running the model is each platform's:
+windows/whisper_qnn.py on the Snapdragon's NPU, macos/whisper_coreml.py
+through Core ML.
 """
 
 from __future__ import annotations
@@ -9,6 +11,7 @@ from __future__ import annotations
 import functools
 import json
 import pathlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -18,6 +21,7 @@ MODEL = pathlib.Path(__file__).resolve().parent.parent / "models" / "whisper-sma
 
 SAMPLE_RATE, N_FFT, HOP, N_MELS, FRAMES = 16000, 400, 160, 80, 3000
 SOT, EN, TRANSCRIBE, NO_TIMESTAMPS, EOT, FIRST_TIMESTAMP = 50258, 50259, 50359, 50363, 50257, 50364
+PROMPT = (SOT, EN, TRANSCRIBE, NO_TIMESTAMPS)  # English, transcribe, no timestamps
 
 
 # ----- features ------------------------------------------------------------
@@ -88,6 +92,32 @@ class Vocabulary:
         return bytes(decoder[c] for c in pieces if c in decoder).decode("utf-8", errors="replace")
 
 
+# ----- decoding --------------------------------------------------------------
+
+
+def decode_greedy(step: Callable[[int, int], np.ndarray], max_len: int, max_tokens: int = 64) -> tuple[list[int], int]:
+    """
+    Whisper's greedy decoding, without timestamps, for a decoder that takes one
+    token at a time and keeps its own caches: step(token, position) runs it
+    and returns the logits. Returns the tokens, and how many steps it took.
+    """
+    tokens: list[int] = []
+    steps = 0
+    # The last prompt token's step gives the first token: max_tokens more steps from there.
+    for n in range(min(max_len - 1, len(PROMPT) - 1 + max_tokens)):
+        logits = step(PROMPT[n] if n < len(PROMPT) else tokens[-1], n)
+        steps += 1
+        if n < len(PROMPT) - 1:
+            continue  # the prompt's own predictions don't matter
+        logits = logits.reshape(-1).astype(np.float32)
+        logits[FIRST_TIMESTAMP:] = -np.inf
+        token = int(np.argmax(logits))
+        if token == EOT:
+            break
+        tokens.append(token)
+    return tokens, steps
+
+
 # ----- model ---------------------------------------------------------------
 
 
@@ -97,6 +127,7 @@ class Timing:
     encoder_ms: float
     decoder_ms: float
     steps: int
+    device: str = ""  # where it ran, for showing: "on the NPU"
 
     @property
     def total_ms(self) -> float:
@@ -107,6 +138,7 @@ class Transcriber(Protocol):
     """A Whisper model loaded on some device, for speech.Listener."""
 
     load_s: float  # how long loading took
+    device: str  # where it runs, for showing: "on the NPU"
 
     def transcribe(self, audio: np.ndarray) -> tuple[str, Timing]:
         """Text of up to 30 s of 16 kHz mono float32 audio."""

@@ -59,7 +59,7 @@ class SceneView(Protocol):
 
 
 class Core(abc.ABC):
-    # Where Whisper runs, for the status line and the chat: "on the NPU".
+    # Where Whisper loads first, for the status line: "on the NPU".
     WHISPER_ON: str
 
     view: SceneView  # set by the subclass before start()
@@ -156,7 +156,8 @@ class Core(abc.ABC):
             self.set_status(f"no Whisper: {e}")
         else:
             self.whisper_ready.set()
-            self.set_status(f"Whisper loaded in {load_s:.1f} s")
+            assert self.listener.whisper is not None
+            self.set_status(f"Whisper loaded {self.listener.whisper.device} in {load_s:.1f} s")
         # Without Whisper, the level meter still shows what the microphone hears.
         self.whisper_tried.set()
         if self.listening:
@@ -295,7 +296,7 @@ class Core(abc.ABC):
             self.latencies.append(heard.latency_ms)
             pause_ms = Segmenter.END_MS
             detail = (
-                f"Whisper {heard.timing.total_ms:.0f} ms {self.WHISPER_ON} · "
+                f"Whisper {heard.timing.total_ms:.0f} ms {heard.timing.device} · "
                 f"moving {pause_ms + heard.latency_ms:.0f} ms after you stopped"
                 if self.options.timing
                 else None

@@ -24,7 +24,7 @@ import numpy as np
 import onnxruntime as ort
 import onnxruntime_qnn
 
-from ..whisper import EN, EOT, FIRST_TIMESTAMP, MODEL, NO_TIMESTAMPS, SOT, TRANSCRIBE, Timing, Vocabulary, log_mel
+from ..whisper import MODEL, Timing, Vocabulary, decode_greedy, log_mel
 
 MASK_NEG = -100.0
 
@@ -45,6 +45,8 @@ def _run(session: ort.InferenceSession, feeds: dict[str, np.ndarray]) -> dict[st
 
 
 class Whisper:
+    device = "on the NPU"
+
     def __init__(self, model: pathlib.Path = MODEL) -> None:
         try:
             ort.register_execution_provider_library(onnxruntime_qnn.EP_NAME, onnxruntime_qnn.get_library_path())
@@ -107,29 +109,20 @@ class Whisper:
                 feeds[name] = np.full(spec["shape"], self.quant[name][1], np.uint8)  # zeros
 
         mask = np.full((1, 1, 1, self.max_len), MASK_NEG, np.float32)
-        prompt = [SOT, EN, TRANSCRIBE, NO_TIMESTAMPS]
-        tokens: list[int] = []
-        steps = 0
-        for n in range(min(self.max_len - 1, len(prompt) + max_tokens)):
-            token = prompt[n] if n < len(prompt) else tokens[-1]
+
+        def step(token: int, n: int) -> np.ndarray:
             mask[..., self.max_len - n - 1] = 0.0
             feeds["input_ids"] = np.array([[token]], np.int32)
             feeds["position_ids"] = np.array([n], np.int32)
             feeds["attention_mask"] = self._q("attention_mask", mask)
             out = _run(self.decoder, feeds)
-            steps += 1
             for name, value in out.items():
                 if name.endswith("_out"):
                     target = name.removesuffix("_out") + "_in"
                     feeds[target] = self._carry(name, target, value)
-            if n < len(prompt) - 1:
-                continue
-            logits = self._dq("logits", out["logits"]).reshape(-1)
-            logits[FIRST_TIMESTAMP:] = -np.inf
-            nxt = int(np.argmax(logits))
-            if nxt == EOT:
-                break
-            tokens.append(nxt)
+            return self._dq("logits", out["logits"])
+
+        tokens, steps = decode_greedy(step, self.max_len, max_tokens)
         t3 = time.perf_counter()
-        timing = Timing((t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000, steps)
+        timing = Timing((t1 - t0) * 1000, (t2 - t1) * 1000, (t3 - t2) * 1000, steps, self.device)
         return self.vocabulary.decode(tokens).strip(), timing
