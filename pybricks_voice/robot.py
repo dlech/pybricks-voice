@@ -5,7 +5,7 @@ drive(speed, turn_rate) for a time, and stop(). A real hub can run them as
 they are later (M2); SimRobot runs them here with differential-drive
 kinematics and the same kind of speed and acceleration limits.
 
-Coordinates: millimetres, x to the right and y forward from the start; the
+Coordinates: millimeters, x to the right and y forward from the start; the
 heading is in degrees, 0 = facing +y, positive = clockwise, as Pybricks'
 turn() is.
 """

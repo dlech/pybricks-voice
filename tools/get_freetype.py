@@ -51,7 +51,7 @@ def main() -> None:
         build = work / "build"
         options = [
             "-DBUILD_SHARED_LIBS=ON",
-            # Only what pygfx's text needs: no compressed or colour fonts, no shaping.
+            # Only what pygfx's text needs: no compressed or color fonts, no shaping.
             *(f"-DFT_DISABLE_{name}=ON" for name in ("ZLIB", "BZIP2", "PNG", "HARFBUZZ", "BROTLI")),
         ]
         subprocess.run([cmake(), "-S", source, "-B", build, "-A", ARCH, *options], check=True)

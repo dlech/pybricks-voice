@@ -50,7 +50,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from pybricks_voice.grammar import parse
 from pybricks_voice.robot import Curve, SimRobot, Straight, Turn
 
-# World space is the simulator's, in centimetres and right-handed: x right, y
+# World space is the simulator's, in centimeters and right-handed: x right, y
 # forward, z up. Its heading is clockwise seen from above, which is a negative
 # rotation about z.
 
@@ -85,7 +85,7 @@ class Mesh:
 
 
 def box(w: float, d: float, h: float):
-    """A w (x) by d (y) by h (z) box, centred on the origin, with flat normals."""
+    """A w (x) by d (y) by h (z) box, centered on the origin, with flat normals."""
     positions, normals, indices = [], [], []
     for axis in range(3):
         for sign in (-1.0, 1.0):
@@ -102,7 +102,7 @@ def box(w: float, d: float, h: float):
 
 
 def cylinder_x(radius: float, width: float, segments: int = 32):
-    """A cylinder along x, centred on the origin: a wheel."""
+    """A cylinder along x, centered on the origin: a wheel."""
     positions, normals, indices = [], [], []
     angles = np.linspace(0, 2 * math.pi, segments, endpoint=False)
     ring = np.stack([np.zeros(segments), np.cos(angles), np.sin(angles)], axis=1)
@@ -115,15 +115,15 @@ def cylinder_x(radius: float, width: float, segments: int = 32):
                 normals.append(ring[k])
         indices += [base, base + 1, base + 3, base, base + 3, base + 2]
     for x, nx in ((-width / 2, -1.0), (width / 2, 1.0)):
-        centre = len(positions)
+        center = len(positions)
         positions.append((x, 0, 0))
         normals.append((nx, 0, 0))
         for k in range(segments):
             positions.append(ring[k] * radius + (x, 0, 0))
             normals.append((nx, 0, 0))
         for k in range(segments):
-            a, b = centre + 1 + k, centre + 1 + (k + 1) % segments
-            indices += [centre, a, b] if nx > 0 else [centre, b, a]
+            a, b = center + 1 + k, center + 1 + (k + 1) % segments
+            indices += [center, a, b] if nx > 0 else [center, b, a]
     return positions, normals, indices
 
 
@@ -154,7 +154,7 @@ def grid(half: float, step: float):
 
 
 def _srgb(hex_color: int) -> tuple[float, float, float, float]:
-    """Base colours are linear; three.js took sRGB hex."""
+    """Base colors are linear; three.js took sRGB hex."""
     rgb = [((hex_color >> s) & 0xFF) / 255 for s in (16, 8, 0)]
     return (*[c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4 for c in rgb], 1.0)
 

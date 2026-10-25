@@ -73,7 +73,7 @@ class TestSimRobot(unittest.TestCase):
         robot.run([Curve(500, 90)])
         run_until_idle(robot)
         s = robot.state()
-        # Around a centre 500 mm to the right: ends 500 right, 500 ahead, facing right.
+        # Around a center 500 mm to the right: ends 500 right, 500 ahead, facing right.
         self.assertAlmostEqual(s.x, 500, places=0)
         self.assertAlmostEqual(s.y, 500, places=0)
         self.assertAlmostEqual(s.heading, 90, places=3)

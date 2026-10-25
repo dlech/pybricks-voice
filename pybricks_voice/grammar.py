@@ -9,7 +9,7 @@ guessed at.
     "drive in a big circle to the left, then spin around twice"
     -> [Curve(600, -360), Turn(360), Turn(360)]
 
-Distances without a unit are centimetres; turns without an angle are 90°.
+Distances without a unit are centimeters; turns without an angle are 90°.
 """
 
 from __future__ import annotations
@@ -378,7 +378,7 @@ def parse_segment(segment: str) -> list[Command] | None:
         if unit is not None and unit not in _UNITS_MM and unit not in _AFTER_NUMBER:
             return None  # "two units": a unit we don't know, so not 2 cm
         if value is not None:
-            scale = _UNITS_MM.get(unit or "", 10.0)  # no unit: centimetres
+            scale = _UNITS_MM.get(unit or "", 10.0)  # no unit: centimeters
             return [Straight(sign * value * scale)]
         if backward or words & _DIRECTIONS:
             return [Straight(sign * DEFAULT_DISTANCE_MM)]

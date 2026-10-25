@@ -52,7 +52,7 @@ class TestParse(unittest.TestCase):
         self.check("Move ahead 150 millimeters.", Straight(150))
         self.check("Back up 10 inches.", Straight(-254))
         self.check("Reverse half a meter.", Straight(-500))
-        self.check("Forward 20.", Straight(200))  # no unit: centimetres
+        self.check("Forward 20.", Straight(200))  # no unit: centimeters
         self.check("Go forward.", Straight(200))
 
     def test_turns(self) -> None:

@@ -377,7 +377,7 @@ class App(Application, IXamlMetadataProvider):
             self.add_bubble("\n".join(replies), mine=False)
 
     def add_bubble(self, text: str, mine: bool, detail: str | None = None) -> None:
-        """A message bubble: yours on the right in the accent colour, the robot's on the left."""
+        """A message bubble: yours on the right in the accent color, the robot's on the left."""
         if mine:
             look = (
                 'HorizontalAlignment="Right" CornerRadius="16,16,4,16" '
