@@ -14,6 +14,12 @@ object it is given. The handlers are a typing.Protocol, with the sender and
 arguments each event's delegate has in PyWinRT's stubs, so pyright checks
 that the object has them all, with the right signatures.
 
+First it checks the XAML the way WinUI's compiler would, against the WinRT
+signatures the stubs have in comments: every element is a WinUI type, every
+attribute a settable property of its element or an attached property of its
+owner (Grid.Row), every property element a property, and an event attribute
+gets told to be py:. Values aren't checked.
+
 The XAML is read when the class is used, so changing the layout needs no
 regenerating; renaming an element, changing its type, or changing an event
 or a handler does.
@@ -102,8 +108,11 @@ def find_event(element: Type, event: str) -> tuple[str, Type, Type]:
             if not (isinstance(node, ast.ClassDef) and node.name == base.__name__):
                 continue
             for item in node.body:
-                # lineno is the def's own line, after any decorators; the comment is just above it.
-                if isinstance(item, ast.FunctionDef) and signature.match(lines[item.lineno - 2]):
+                if not isinstance(item, ast.FunctionDef):
+                    continue
+                # The comment is above the def, or above its decorators: lineno is the def's own line.
+                first = min([d.lineno for d in item.decorator_list] + [item.lineno])
+                if any(signature.match(line) for line in lines[first - 2 : item.lineno - 1]):
                     annotation = (item.args.posonlyargs + item.args.args)[1].annotation  # self, handler
                     assert annotation is not None
                     return item.name, *_delegate(annotation, base.__module__)
@@ -128,8 +137,94 @@ def _delegate(annotation: ast.expr, module: str) -> tuple[Type, Type]:
     raise SystemExit(f"{name} isn't a delegate in {alias_module}")
 
 
+_MEMBER = re.compile(r"^\s*# .*::(\w+)\(")
+
+
+@functools.cache
+def members(element: Type) -> frozenset[str]:
+    """
+    The WinRT names of a type's members, its bases' included, from the
+    signatures commented in the stubs: get_MinHeight, put_MinHeight,
+    add_Click, SetRow, get_RowProperty...
+    """
+    module, type_ = element
+    names: set[str] = set()
+    for base in getattr(importlib.import_module(module), type_).__mro__:
+        if base.__module__ == "winrt.system" or not base.__module__.startswith("winrt."):
+            continue
+        tree, _, lines = _stub(base.__module__)
+        for node in tree.body:
+            # Statics, attached properties' setters among them, are on a metaclass: Grid_Static.
+            if isinstance(node, ast.ClassDef) and node.name in (base.__name__, f"{base.__name__}_Static"):
+                names.update(
+                    m.group(1) for line in lines[node.lineno - 1 : node.end_lineno] if (m := _MEMBER.match(line))
+                )
+    return frozenset(names)
+
+
+def _split(tag: str) -> tuple[str, str]:
+    """{namespace}name -> (namespace, name)."""
+    namespace, _, name = tag[1:].partition("}") if tag.startswith("{") else ("", "", tag)
+    return namespace, name
+
+
+def _winui(name: str) -> Type | None:
+    try:
+        return winrt_type(f"{{{PRESENTATION}}}{name}")
+    except SystemExit:
+        return None
+
+
+def problems(root: ElementTree.Element) -> list[str]:
+    """
+    What WinUI's XAML compiler would reject before the app runs: elements
+    that aren't WinUI types, and attributes or property elements that aren't
+    settable properties of their element, or attached properties of their
+    owner. Values aren't checked.
+    """
+    found = []
+    for element in root.iter():
+        namespace, tag = _split(element.tag)
+        if namespace != PRESENTATION:
+            continue  # x:Double and the like
+        if "." in tag:  # a property element: <Grid.ColumnDefinitions>
+            owner, _, prop = tag.partition(".")
+            type_ = _winui(owner)
+            if type_ is None:
+                found.append(f"<{tag}>: {owner} isn't a WinUI type")
+            elif not {f"get_{prop}", f"put_{prop}"} & members(type_):
+                found.append(f"<{tag}>: {owner} has no {prop} property")
+            continue
+        type_ = _winui(tag)
+        if type_ is None:
+            found.append(f"<{tag}> isn't a WinUI type")
+            continue
+        names = members(type_)
+        label = f'<{tag} Name="{element.get("Name")}">' if element.get("Name") else f"<{tag}>"
+        for key in element.attrib:
+            namespace, attribute = _split(key)
+            if namespace:
+                continue  # x:, mc: and py:, which is checked where it is wired
+            if "." in attribute:  # an attached property: Grid.Row
+                owner, _, prop = attribute.partition(".")
+                type_ = _winui(owner)
+                if type_ is None or not {f"Set{prop}", f"get_{prop}Property"} & members(type_):
+                    found.append(f"{label}: {attribute} isn't an attached property")
+            elif f"put_{attribute}" in names:
+                continue
+            elif f"add_{attribute}" in names:
+                found.append(f"{label}: {attribute} is an event, which XamlReader rejects: use py:{attribute}")
+            elif f"get_{attribute}" in names:
+                found.append(f"{label}: {attribute} is read-only")
+            else:
+                found.append(f"{label}: {tag} has no {attribute} property")
+    return found
+
+
 def generate(xaml: pathlib.Path) -> str:
     root = ElementTree.parse(xaml).getroot()
+    if found := problems(root):
+        raise SystemExit(f"{xaml.name}:\n  " + "\n  ".join(found))
     root_module, root_type = winrt_type(root.tag)
     root_attribute = root_type.lower()
     named: list[tuple[str, str, str]] = []  # (name, module, type)

@@ -18,5 +18,44 @@ class TestGeneratedXamlTypes(unittest.TestCase):
             self.assertEqual(generated, xaml_types.generate(xaml), f"run tools/xaml_types.py for {xaml.name}")
 
 
+class TestProblems(unittest.TestCase):
+    """What WinUI's XAML compiler would reject, found before the app runs."""
+
+    def problems(self, body: str) -> list[str]:
+        xaml = (
+            '<Grid xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"'
+            ' xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">' + body + "</Grid>"
+        )
+        return xaml_types.problems(xaml_types.ElementTree.fromstring(xaml))
+
+    def test_valid(self) -> None:
+        body = """
+            <Grid.RowDefinitions><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+            <ProgressBar x:Name="bar" Grid.Row="1" MinHeight="10" Value="3">
+                <ProgressBar.Resources><x:Double x:Key="ProgressBarTrackHeight">10</x:Double></ProgressBar.Resources>
+            </ProgressBar>
+            <Button Content="Go" ToolTipService.ToolTip="Go"/>
+        """
+        self.assertEqual(self.problems(body), [])
+
+    def test_misspelled_property(self) -> None:
+        self.assertEqual(self.problems('<TextBlock Txt="hi"/>'), ["<TextBlock>: TextBlock has no Txt property"])
+
+    def test_event_attribute(self) -> None:
+        self.assertIn("use py:Click", self.problems('<Button Name="go" Click="on_go"/>')[0])
+
+    def test_read_only(self) -> None:
+        self.assertEqual(self.problems('<TextBox ActualWidth="3"/>'), ["<TextBox>: ActualWidth is read-only"])
+
+    def test_attached(self) -> None:
+        self.assertEqual(self.problems('<Button Grid.Rows="1"/>'), ["<Button>: Grid.Rows isn't an attached property"])
+
+    def test_elements(self) -> None:
+        self.assertEqual(
+            self.problems("<Buton/><Grid.Columns/>"),
+            ["<Buton> isn't a WinUI type", "<Grid.Columns>: Grid has no Columns property"],
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

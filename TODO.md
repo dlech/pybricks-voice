@@ -69,7 +69,8 @@ What needs improving, here and in the projects this app is built on.
       handlers named in the XAML as `py:Click="..."` in an `mc:Ignorable`
       namespace (XamlReader rejects plain event attributes). The handlers are a
       Protocol typed from the stubs' delegates, so pyright checks them as C#'s
-      compiler checks code-behind. It could be a PyWinRT tool.
+      compiler checks code-behind. It also checks every element, attribute and
+      property element against the stubs, as the compiler would. It could be a PyWinRT tool.
 - [ ] **Keyword arguments for property setters** in generated constructors, as C#'s
       object initializers (`TextBlock(text="…", font_size=12)`), plus helpers for
       attached properties, so UI built in code is as short as XAML and typed.
