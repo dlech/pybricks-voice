@@ -13,6 +13,14 @@ What needs improving, here and in the projects this app is built on.
       as commands. "You made a drive in a square" drove one, because "made" isn't one
       of the words that mark a comment. Consider requiring a wake word, or only
       acting on whole commands.
+- [x] **A realistic robot:** Driving Base 1 from LDraw's parts (`models/`), without its
+      cables. The wheels and hub are placed by measurement rather than snapped
+      together in a LEGO CAD program, so small parts are left out; a model
+      built in Studio or LDCad would be more faithful.
+- [ ] **No side effects on import:** `scene.py` puts `vendor/` on PATH before importing
+      pygfx, since freetype-py looks for its DLL when imported, so pygfx must
+      be imported after it. Build a local freetype-py wheel with the DLL in it,
+      as `get_mujoco.py` does for MuJoCo, until freetype-py#210 ships one.
 - [ ] **The 3D view looks slightly soft,** probably pygfx's antialiasing filter. Try
       its pixel filter settings.
 - [x] **Screenshot device:** `screenshot.py` uses PyWinRT's `create_direct3d11_device()`

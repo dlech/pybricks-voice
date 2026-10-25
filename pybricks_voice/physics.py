@@ -7,7 +7,7 @@ the table then decides what the robot does: it slips, stalls against a block,
 or shoves the block out of the way, and its pose comes from the simulation
 rather than from the profiles.
 
-World coordinates are SimRobot's, in metres: x right, y forward, z up.
+World coordinates are SimRobot's, in meters: x right, y forward, z up.
 """
 
 # mujoco star-imports its functions from compiled modules, which pyright
@@ -32,7 +32,7 @@ class Thing:
 
     name: str
     shape: str  # "box" or "sphere"
-    size: tuple[float, ...]  # MuJoCo's half sizes, or the radius, in metres
+    size: tuple[float, ...]  # MuJoCo's half sizes, or the radius, in meters
     at: tuple[float, float]  # where it starts on the table
     mass: float  # kg
     color: str
@@ -56,16 +56,17 @@ def _thing_mjcf(thing: Thing) -> str:
     )
 
 
-# The SPIKE driving base: a frame with the hub on top, behind the axle, which
-# is the body's origin, so that its weight rests between the wheels and the
-# caster ball at the back; a sensor at the front. Sizes follow scene.py.
+# SPIKE Prime's Driving Base 1, in boxes: the motors on their frame, and the
+# hub on top of them, both mostly behind the axle, which is the body's origin,
+# so that the weight rests between the wheels and the caster ball at the back.
+# Sizes and places follow models/driving_base.ldr.
 MJCF = f"""
 <mujoco model="pybricks driving base">
   <option timestep="0.002" integrator="implicitfast" cone="elliptic" impratio="10"/>
   <default>
     <geom friction="0.8 0.005 0.0001"/>
-    <default class="tyre">
-      <!-- An ellipsoid touches the table at one point, as a rounded tyre does; a
+    <default class="tire">
+      <!-- An ellipsoid touches the table at one point, as a rounded tire does; a
            cylinder touches at both rim edges and scrubs when the robot turns. -->
       <geom type="ellipsoid" size="0.007 {WHEEL_RADIUS} {WHEEL_RADIUS}" friction="1.2 0.002 0.0001"
             condim="6" mass="0.03"/>
@@ -75,19 +76,18 @@ MJCF = f"""
     <geom name="table" type="plane" size="10 10 0.1"/>
     <body name="robot" pos="0 0 0.0005">
       <freejoint name="robot"/>
-      <geom name="frame" type="box" size="0.048 0.06 0.016" pos="0 -0.02 0.042" mass="0.25"/>
-      <geom name="hub" type="box" size="0.044 0.028 0.016" pos="0 -0.025 0.074" mass="0.2"/>
-      <geom name="sensor" type="box" size="0.012 0.016 0.012" pos="0 0.06 0.04" mass="0.03"/>
+      <geom name="motors" type="box" size="0.028 0.04 0.016" pos="0 -0.028 0.024" mass="0.25"/>
+      <geom name="hub" type="box" size="0.028 0.044 0.016" pos="0 -0.032 0.056" mass="0.2"/>
       <!-- Frictionless: a contact takes the larger condim of its two geoms, so
            without priority the table's would make the caster drag. -->
-      <geom name="caster" type="sphere" size="0.01" pos="0 -0.065 0.01" condim="1" priority="1" mass="0.01"/>
+      <geom name="caster" type="sphere" size="0.0095" pos="0 -0.072 0.0095" condim="1" priority="1" mass="0.01"/>
       <body name="left wheel" pos="-0.056 0 {WHEEL_RADIUS}">
         <joint name="left" type="hinge" axis="1 0 0" damping="0.002" armature="0.0004"/>
-        <geom class="tyre"/>
+        <geom class="tire"/>
       </body>
       <body name="right wheel" pos="0.056 0 {WHEEL_RADIUS}">
         <joint name="right" type="hinge" axis="1 0 0" damping="0.002" armature="0.0004"/>
-        <geom class="tyre"/>
+        <geom class="tire"/>
       </body>
     </body>
     {"".join(_thing_mjcf(thing) for thing in THINGS)}
@@ -103,7 +103,7 @@ MJCF = f"""
 
 @dataclass
 class Pose:
-    position: np.ndarray  # metres
+    position: np.ndarray  # meters
     rotation: np.ndarray  # 3x3, body to world
 
 

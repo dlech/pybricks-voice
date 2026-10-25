@@ -1,0 +1,32 @@
+0 SPIKE Prime Driving Base 1, without its wheels
+0 Name: driving_base.ldr
+0 Author: pybricks-voice
+0 !LICENSE Licensed under CC BY 4.0 : see CAreadme.txt
+0 // After LEGO Education's building instructions for Driving Base 1, steps
+0 // 1 to 25, leaving out the cables, cable clips and small connectors.
+0 // The origin is the middle of the axle on the table; forward is -z, so
+0 // the robot's left is +x, and y points down, as in all LDraw files. The
+0 // wheels (39367p01) go on the motors' outputs at (140, -70, 0) on the left
+0 // and (-140, -70, 0) on the right: see scene.py.
+
+0 // Step 1: the frame, under the motors
+1 26 0 -30 60 1 0 0 0 1 0 0 0 1 39794.dat
+
+0 // Step 3: the motors, outputs outwards, cables at the back
+1 15 -40 -70 0 0 1 0 -1 0 0 0 0 1 54696p01.dat
+1 15 40 -70 0 0 -1 0 1 0 0 0 0 1 54696p01.dat
+
+0 // Step 4: the axles in the motors' outputs
+1 14 -120 -70 0 1 0 0 0 1 0 0 0 1 4519.dat
+1 14 120 -70 0 1 0 0 0 1 0 0 0 1 4519.dat
+
+0 // Step 14: the hub on top of the motors
+1 15 0 -100 80 -1 0 0 0 1 0 0 0 -1 45601c01.dat
+
+0 // Steps 10 to 13: the ball caster under the back of the hub
+1 26 0 -110 175 1 0 0 0 1 0 0 0 1 39793.dat
+1 322 0 -70 180 1 0 0 0 1 0 0 0 1 39370c01.dat
+
+0 // Steps 15 to 21: the beams along the sides
+1 0 -100 -110 40 1 0 0 0 1 0 0 0 1 32278.dat
+1 0 100 -110 40 1 0 0 0 1 0 0 0 1 32278.dat

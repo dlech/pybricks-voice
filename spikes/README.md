@@ -18,7 +18,7 @@ Microsoft's documentation:
   That's where it was left.
 - **Line meshes render black,** whatever their material, emission included.
   Lines are drawn as thin strips of triangles instead.
-- **Vertex colours:** the `COLOR` attribute refused every format tried (RGBA
+- **Vertex colors:** the `COLOR` attribute refused every format tried (RGBA
   float, RGB float, RGBA 8-bit).
 - **Transforms:** a `SceneModelTransform` rotates about the origin *after* it
   translates, so position and heading need nodes of their own.
@@ -60,3 +60,13 @@ uv run python spikes/drag_stall.py [--nudge] [--no-cdb] [--seconds 60]
 
 The report and stacks go to `out/drag_stall/`. `cdb` is the Windows SDK's
 (Debugging Tools for Windows); its symbols come from Microsoft's server.
+
+## LDraw previews
+
+`ldraw_preview.py` draws SPIKE Prime parts, or a model with its wheels from
+four sides, offscreen with pygfx, to check `pybricks_voice/ldraw.py` and
+`models/driving_base.ldr` without the app:
+
+```
+uv run python spikes/ldraw_preview.py pybricks_voice/models/ldraw --model pybricks_voice/models/driving_base.ldr --out out/driving_base.png
+```

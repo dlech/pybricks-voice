@@ -1,9 +1,9 @@
 # pybricks-voice
 
 Drive a LEGO robot by talking to it. Whisper runs on the laptop's NPU, and for
-now the robot is a simulated SPIKE Prime driving base, with real physics from
-[MuJoCo](https://mujoco.org): its wheels can slip, and it can push the blocks
-and the ball on its table. So the voice side can be built and tested without
+now the robot is a simulated SPIKE Prime driving base, drawn from real LEGO
+parts and with real physics from [MuJoCo](https://mujoco.org): its wheels can
+slip, and it can push the blocks and the ball on its table. So the voice side can be built and tested without
 Bluetooth or a real table.
 
 ```
@@ -65,8 +65,20 @@ uv run tools/check_whisper.py      # Windows speech synthesis -> Whisper on the 
 | `pybricks_voice/speech.py` | microphone, voice-activity detection, the Whisper worker thread |
 | `pybricks_voice/app.py` | the WinUI 3 window |
 | `pybricks_voice/physics.py` | the robot and its table in MuJoCo; its motors follow `robot.py`'s wheel angles |
-| `pybricks_voice/scene.py` | the 3D view: pygfx in a `SwapChainPanel` |
+| `pybricks_voice/scene.py` | the 3D view: pygfx in a `SwapChainPanel`, drawn by a thread of its own |
+| `pybricks_voice/ldraw.py` | LEGO models from the LDraw parts library, as triangles |
+| `pybricks_voice/models/` | Driving Base 1 as an LDraw model, and the LDraw parts it uses |
 | `pybricks_voice/loop.py` | asyncio as a guest of the UI thread's `DispatcherQueue` |
 | `tools/get_freetype.py` | builds `vendor/freetype.dll` for pygfx |
 | `tools/get_mujoco.py` | builds a MuJoCo wheel into `vendor/wheels/` |
-| `spikes/` | the same view tried with Composition Scenes, kept for its findings |
+| `tools/get_ldraw.py` | copies the parts the model uses from LDraw's library into `models/ldraw/` |
+| `spikes/` | experiments kept for their findings: Composition Scenes, the window-drag stall, LDraw previews |
+
+## Credits
+
+The robot is drawn with parts from the [LDraw](https://www.ldraw.org) parts
+library, by its many authors, under
+[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/): see
+`pybricks_voice/models/ldraw/CAreadme.txt`. The model follows LEGO Education's
+building instructions for SPIKE Prime's Driving Base 1. LEGO and SPIKE are
+trademarks of the LEGO Group, which doesn't sponsor or endorse this project.

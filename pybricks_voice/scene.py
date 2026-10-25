@@ -57,6 +57,7 @@ from winrt.microsoft.ui.xaml.controls import SwapChainPanel  # noqa: E402
 from winrt.microsoft.ui.xaml.media import ScaleTransform  # noqa: E402
 from winrt.runtime.interop import as_interface  # noqa: E402
 
+from . import ldraw  # noqa: E402
 from .physics import THINGS, World  # noqa: E402
 
 log = logging.getLogger(__name__)
@@ -161,6 +162,44 @@ class SwapChainPanelCanvas(BaseRenderCanvas):
 # ----- the scene -------------------------------------------------------------------
 
 
+_MODELS = pathlib.Path(__file__).resolve().parent / "models"
+# From LDraw (LDU, y down, and our model faces -z) to the scene (cm, y up, the
+# robot facing -z): a half turn about z.
+_LDRAW_TO_SCENE = np.array([-1, -1, 1]) * ldraw.LDU * 100
+# The wheels' LDraw placements, matrix and position, left then right: the
+# robot's left is LDraw's +x. See driving_base.ldr.
+_WHEELS = [
+    ((0, 0, 1, 0, 1, 0, -1, 0, 0), (140, -70, 0)),
+    ((0, 0, -1, 0, 1, 0, 1, 0, 0), (-140, -70, 0)),
+]
+
+
+def _ldraw_group(library: ldraw.Library, name: str, color: int = ldraw.MAIN_COLOR, matrix=None) -> gfx.Group:
+    """An LDraw model or part as one mesh per color, in the scene's frame,
+    turned by matrix (an LDraw line's nine numbers) first."""
+    group = gfx.Group()
+    for code, tris in library.triangles(name, color).items():
+        if matrix is not None:
+            tris = tris @ np.reshape(matrix, (3, 3)).T
+        points = tris * _LDRAW_TO_SCENE
+        normals = np.cross(points[:, 1] - points[:, 0], points[:, 2] - points[:, 0])
+        normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-9)
+        geometry = gfx.Geometry(
+            positions=points.reshape(-1, 3).astype(np.float32),
+            normals=np.repeat(normals, 3, axis=0).astype(np.float32),
+            indices=np.arange(3 * len(points), dtype=np.int32).reshape(-1, 3),
+        )
+        c = library.color(code)
+        rubber, metal = "rubber" in c.name.lower(), "chrome" in c.name.lower() or "metal" in c.name.lower()
+        material = gfx.MeshStandardMaterial(
+            color=c.rgb, roughness=0.85 if rubber else 0.35, metalness=0.8 if metal else 0.0, side="both"
+        )
+        mesh = gfx.Mesh(geometry, material)
+        mesh.cast_shadow = mesh.receive_shadow = True
+        group.add(mesh)
+    return group
+
+
 def _material(color: str, roughness: float = 0.5) -> gfx.MeshStandardMaterial:
     return gfx.MeshStandardMaterial(color=color, roughness=roughness)
 
@@ -169,8 +208,8 @@ def _about(axis: tuple[float, float, float], angle: float) -> np.ndarray:
     return la.quat_from_axis_angle(axis, angle)
 
 
-# From the physics' frame (x right, y forward, z up, in metres) to the scene's
-# (x right, y up, forward -z, in centimetres): a quarter turn about x.
+# From the physics' frame (x right, y forward, z up, in meters) to the scene's
+# (x right, y up, forward -z, in centimeters): a quarter turn about x.
 _TO_SCENE = np.array([[1.0, 0, 0], [0, 0, 1.0], [0, -1.0, 0]])
 
 
@@ -200,6 +239,10 @@ class RobotScene:
         self.sun = gfx.DirectionalLight("#ffffff", 2.4, cast_shadow=True)  # pyright: ignore[reportArgumentType]
         assert self.sun.shadow is not None
         self.sun.shadow.camera.width = self.sun.shadow.camera.height = 240
+        # LDraw's triangles face either way (ldraw.py ignores its winding
+        # directives), so no culling and a little bias, or they shadow themselves.
+        self.sun.shadow.cull_mode = "none"
+        self.sun.shadow.bias = 0.002
         self.scene.add(self.sun)
 
         # The table: a big floor with a 10 cm grid and a 1 m grid on top.
@@ -211,33 +254,17 @@ class RobotScene:
         fine.local.y, coarse.local.y = 0.02, 0.03
         self.scene.add(floor, fine, coarse)
 
-        # The axle midpoint is the robot's reference point, as it is for
-        # Pybricks' DriveBase.
-        self.robot = gfx.Group()
-        white, yellow = _material("#f2f2f2"), _material("#ffcd03", 0.45)
-        dark, teal = _material("#23262b", 0.8), _material("#00a3a6")
-        for size, material, at in (
-            ((9.6, 3.2, 12), white, (0, 4.2, 2)),  # frame
-            ((8.8, 3.2, 5.6), yellow, (0, 7.4, 2.5)),  # hub
-            ((5, 0.6, 3), dark, (0, 9.1, 2.5)),  # hub screen
-            ((2.4, 2.4, 3.2), teal, (0, 4, -6)),  # sensor at the front
-        ):
-            self.robot.add(self._part(_box(*size), material, at))
+        # A SPIKE Prime driving base, from LDraw's parts (see models/). The
+        # axle midpoint is its reference point, as it is for Pybricks' DriveBase.
+        library = ldraw.Library(_MODELS / "ldraw")
+        self.robot = _ldraw_group(library, str(_MODELS / "driving_base.ldr"))
         self.wheels = []
-        for side in (-1, 1):
+        for matrix, at in _WHEELS:  # left, right
             wheel = gfx.Group()
-            tyre = self._part(gfx.cylinder_geometry(2.8, 2.8, 1.4, 32), dark, (0, 0, 0))
-            tyre.local.rotation = _about((0, 1, 0), math.pi / 2)  # pygfx's cylinders run along z
-            spoke = self._part(_box(1.5, 3.6, 0.8), white, (side * 0.4, 0, 0))  # shows the spin
-            wheel.add(tyre, spoke)
-            wheel.local.position = (side * 5.6, 2.8, 0)
+            wheel.add(_ldraw_group(library, "39367p01.dat", 0, matrix))
+            wheel.local.position = np.array(at) * _LDRAW_TO_SCENE
             self.robot.add(wheel)
             self.wheels.append(wheel)
-        self.robot.add(self._part(gfx.sphere_geometry(1, 16, 16), white, (0, 1, 6.5)))  # caster
-        arrow = gfx.Mesh(gfx.cone_geometry(1.2, 3, 3), gfx.MeshBasicMaterial(color="#4f8cff"))
-        arrow.local.position = (0, 10.5, -1)
-        arrow.local.rotation = _about((0, 1, 0), math.pi)  # pygfx's cones point along +z
-        self.robot.add(arrow)
         self.scene.add(self.robot)
 
         # Things on the table to push around, as physics.py defines them.
@@ -292,7 +319,7 @@ class RobotScene:
             self.trail_count += 1
 
         if self.chase:  # behind and above, turning with the robot
-            back = la.vec_transform_quat((0, 45 * self.zoom, 60 * self.zoom), _about((0, 1, 0), turn))
+            back = la.vec_transform_quat((0, 50 * self.zoom, 70 * self.zoom), _about((0, 1, 0), turn))
             wanted = np.array((x, 0, z)) + back
             look = (x, 5, z)
         else:  # straight down

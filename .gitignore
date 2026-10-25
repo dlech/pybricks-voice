@@ -2,7 +2,7 @@
 __pycache__/
 *.pyc
 # Downloaded model files (see README)
-models/
+/models/
 # Screenshots and generated test audio
 out/
 # Built by tools/get_freetype.py
