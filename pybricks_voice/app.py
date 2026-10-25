@@ -367,9 +367,9 @@ class App(Application, IXamlMetadataProvider):
             detail = "typed"
         self.add_bubble(heard.text, mine=True, detail=detail)
 
+        # The robot answers remarks and what it didn't understand; a command
+        # needs no echo, since the robot does it and the queue line names it.
         replies = list(heard.parse.remarks)
-        if heard.parse.commands:
-            replies.append(describe(heard.parse.commands) + ".")
         for segment in heard.parse.not_understood:
             tries = " or ".join(f"“{s}”" for s in suggest(segment))
             replies.append(f"I didn't get “{segment}”. Try {tries}.")
