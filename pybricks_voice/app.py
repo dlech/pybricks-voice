@@ -100,7 +100,8 @@ XAML = """
             </StackPanel>
             <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
                 <ToggleSwitch Name="listen" OnContent="Listening" OffContent="Muted" IsOn="True"/>
-                <ProgressBar Name="level" Width="110" VerticalAlignment="Center" Minimum="-70" Maximum="-10"/>
+                <ProgressBar Name="level" Width="110" VerticalAlignment="Center"
+                             Minimum="-70" Maximum="-10" Value="-70"/>
                 <TextBlock Name="level_db" Width="52" VerticalAlignment="Center" Opacity="0.6"
                            FontFamily="Consolas" TextAlignment="Right"/>
                 <Ellipse Name="speaking" Width="10" Height="10" VerticalAlignment="Center" Opacity="0"
