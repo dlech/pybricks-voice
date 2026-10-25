@@ -83,9 +83,24 @@ What needs improving, here and in the projects this app is built on.
 - [ ] **A supported way to present into a WinUI `SwapChainPanel`:** wgpu-native has
       `WGPUSurfaceSourceSwapChainPanel`, but wgpu-py only makes surfaces from window
       handles, so `scene.py` wraps its `get_surface_id_from_info` (and pins wgpu).
-- [ ] **The swap chain ignores the display scale:** wgpu doesn't call
-      `IDXGISwapChain2::SetMatrixTransform`, so `scene.py` lays the panel out at
-      physical size and scales it back down.
+      First of the three: rendercanvas's backend needs it.
+
+### rendercanvas
+
+- [ ] **A WinUI backend,** `rendercanvas.winui`, with PyWinRT as an optional
+      dependency: `scene.py`'s `SwapChainPanelCanvas` and most of `SceneView`, the
+      parts every app would otherwise find again. The panel laid out at physical
+      size and scaled back down, the display's scale followed through
+      `XamlRoot.Changed`, the first frame drawn on the UI thread (`SetSwapChain`
+      fails on any other), then drawing from a thread of its own or on demand,
+      perhaps scheduled by the guest asyncio loop. Needs the wgpu-py item above.
+
+### wgpu
+
+- [ ] **The swap chain ignores the display scale:** wgpu's Direct3D 12 backend doesn't
+      call `IDXGISwapChain2::SetMatrixTransform` with the inverse of the panel's
+      composition scale, so `scene.py` lays the panel out at physical size and
+      scales it back down; rendercanvas's backend would have to as well.
 
 ### pygfx
 
