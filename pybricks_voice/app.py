@@ -29,20 +29,10 @@ from winrt.microsoft.ui.xaml import (
     Application,
     DispatcherShutdownMode,
     FocusState,
-    FrameworkElement,
     LaunchActivatedEventArgs,
     UIElement,
-    Window,
 )
 from winrt.microsoft.ui.xaml.controls import (
-    Button,
-    ProgressBar,
-    ScrollViewer,
-    StackPanel,
-    SwapChainPanel,
-    TextBlock,
-    TextBox,
-    ToggleSwitch,
     XamlControlsResources,
 )
 from winrt.microsoft.ui.xaml.input import KeyRoutedEventArgs, PointerRoutedEventArgs
@@ -57,6 +47,7 @@ from winrt.windows.ui.xaml.interop import TypeKind, TypeName
 
 from .grammar import describe, suggest
 from .loop import DispatcherQueueEventLoop
+from .main_window import MainWindow
 from .physics import Physics, World
 from .robot import SimRobot, State
 from .scene import SceneView, use_d3d12
@@ -68,88 +59,6 @@ log = logging.getLogger(__name__)
 
 # The level meter: how quickly it follows the microphone up and down, in seconds.
 LEVEL_RISE_S, LEVEL_FALL_S = 0.05, 0.35
-
-XAML = """
-<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
-    <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
-    <Grid>
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*"/>
-            <ColumnDefinition Width="380"/>
-        </Grid.ColumnDefinitions>
-        <Grid Name="view" Background="Transparent">
-            <!-- Laid out at physical size and scaled down: see scene.py. -->
-            <Canvas Name="host">
-                <SwapChainPanel Name="panel"/>
-            </Canvas>
-            <Border Margin="12" HorizontalAlignment="Left" VerticalAlignment="Bottom" Padding="8,4"
-                    Background="#88000000" CornerRadius="4">
-                <TextBlock Name="hud" Foreground="#c9d1dc" FontFamily="Consolas"/>
-            </Border>
-            <TextBlock Margin="12,10" HorizontalAlignment="Right" VerticalAlignment="Top"
-                       Foreground="#8a94a3" Text="C: camera · scroll: zoom"/>
-        </Grid>
-        <Grid Grid.Column="1" Padding="16" RowSpacing="12">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="*"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-            <StackPanel Spacing="4">
-                <TextBlock Text="Talk to the robot" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                <TextBlock Name="status" Opacity="0.7" TextWrapping="Wrap"/>
-            </StackPanel>
-            <!-- Controls on top, their labels under them on one line. The switch's own
-                 label would sit beside it, so it has none, and only the knob's width. -->
-            <Grid Grid.Row="1" ColumnSpacing="16">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="Auto"/>
-                </Grid.RowDefinitions>
-                <ToggleSwitch Name="listen" OnContent="" OffContent="" IsOn="True" MinWidth="0" Width="40" Height="32"
-                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                <!-- The track is 1 px in WinUI's style: as thick as the bar here. -->
-                <ProgressBar Name="level" Grid.Column="1" MinHeight="10" CornerRadius="5" VerticalAlignment="Center"
-                             Minimum="-70" Maximum="-10" Value="-70"
-                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-                    <ProgressBar.Resources>
-                        <x:Double x:Key="ProgressBarTrackHeight">10</x:Double>
-                    </ProgressBar.Resources>
-                </ProgressBar>
-                <TextBlock Name="listen_label" Grid.Row="1" Text="Listening" Opacity="0.6" FontSize="12"
-                           HorizontalAlignment="Center"/>
-                <TextBlock Name="level_db" Grid.Row="1" Grid.Column="1" Opacity="0.6" FontFamily="Consolas"
-                           FontSize="12" HorizontalAlignment="Center"/>
-            </Grid>
-            <Grid Grid.Row="2" ColumnSpacing="8">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="Auto"/>
-                </Grid.ColumnDefinitions>
-                <TextBox Name="typed" PlaceholderText="…or type: forward 30 cm then turn left"/>
-                <Button Name="go" Grid.Column="1" Content="Go" Style="{StaticResource AccentButtonStyle}"/>
-            </Grid>
-            <StackPanel Grid.Row="3" Orientation="Horizontal" Spacing="8">
-                <Button Name="stop" Content="Stop"/>
-                <Button Name="reset" Content="Reset"/>
-                <Button Name="camera" Content="Camera"/>
-            </StackPanel>
-            <ScrollViewer Name="scroller" Grid.Row="4">
-                <StackPanel Name="log" Spacing="8" Padding="0,0,12,0"/>
-            </ScrollViewer>
-            <TextBlock Name="queue" Grid.Row="5" Opacity="0.7" TextWrapping="Wrap" MaxLines="3"
-                       TextTrimming="CharacterEllipsis"/>
-        </Grid>
-    </Grid>
-</Window>
-"""
 
 
 class App(Application, IXamlMetadataProvider):
@@ -176,34 +85,25 @@ class App(Application, IXamlMetadataProvider):
     @override
     def _on_launched(self, args: LaunchActivatedEventArgs) -> None:
         self.resources.merged_dictionaries.append(XamlControlsResources())
-        self.window = XamlReader.load(XAML).as_(Window)
+        self.ui = MainWindow()  # main_window.xaml
+        self.window = self.ui.window
         self.window.title = "Pybricks voice driving · Whisper on the NPU"
         self.window.app_window.resize(SizeInt32(1600, 1000))
-        content = self.window.content.as_(FrameworkElement)
-        find = content.find_name
-        self.view = SceneView(find("host").as_(FrameworkElement), find("panel").as_(SwapChainPanel), self.step)
-        self.hud = find("hud").as_(TextBlock)
-        self.status = find("status").as_(TextBlock)
-        self.level = find("level").as_(ProgressBar)
-        self.level_text = find("level_db").as_(TextBlock)
-        self.listen = find("listen").as_(ToggleSwitch)
-        self.listen_label = find("listen_label").as_(TextBlock)
-        self.typed = find("typed").as_(TextBox)
-        self.log = find("log").as_(StackPanel)
-        self.scroller = find("scroller").as_(ScrollViewer)
-        self.queue_text = find("queue").as_(TextBlock)
+        self.view = SceneView(self.ui.host, self.ui.panel, self.step)
         # Newest message at the bottom, as in a messaging app: follow the
         # conversation once each new bubble has been measured.
-        self.log.add_size_changed(lambda s, e: self.scroller.change_view(None, self.scroller.scrollable_height, None))
+        self.ui.log.add_size_changed(
+            lambda s, e: self.ui.scroller.change_view(None, self.ui.scroller.scrollable_height, None)
+        )
 
-        find("go").as_(Button).add_click(lambda s, e: self.submit_typed())
-        find("stop").as_(Button).add_click(lambda s, e: self.robot.stop())
-        find("reset").as_(Button).add_click(lambda s, e: self.reset())
-        find("camera").as_(Button).add_click(lambda s, e: self.toggle_camera())
-        self.typed.add_key_down(self.on_typed_key)
-        content.add_key_down(self.on_key)
-        find("view").as_(FrameworkElement).add_pointer_wheel_changed(self.on_wheel)
-        self.listen.add_toggled(lambda s, e: self.set_listening(self.listen.is_on))
+        self.ui.go.add_click(lambda s, e: self.submit_typed())
+        self.ui.stop.add_click(lambda s, e: self.robot.stop())
+        self.ui.reset.add_click(lambda s, e: self.reset())
+        self.ui.camera.add_click(lambda s, e: self.toggle_camera())
+        self.ui.typed.add_key_down(self.on_typed_key)
+        self.window.content.add_key_down(self.on_key)
+        self.ui.scene_area.add_pointer_wheel_changed(self.on_wheel)
+        self.ui.listen.add_toggled(lambda s, e: self.set_listening(self.ui.listen.is_on))
         self.window.add_closed(lambda s, e: self.shutdown())
 
         # Closing the window starts shutdown(), and the app exits once main() has
@@ -246,7 +146,7 @@ class App(Application, IXamlMetadataProvider):
         load_s = await self.listener.start()
         self.whisper_ready.set()
         self.set_status(f"Whisper loaded in {load_s:.1f} s")
-        if self.listen.is_on:
+        if self.ui.listen.is_on:
             await self.open_microphone()
         async for heard in self.listener.heard():
             self.on_heard(heard)
@@ -259,13 +159,13 @@ class App(Application, IXamlMetadataProvider):
         except Exception as e:
             self.set_status(f"no microphone: {e}")
             return
-        if not self.listen.is_on:  # switched off while it was opening
+        if not self.ui.listen.is_on:  # switched off while it was opening
             self.microphone.stop()
 
     def set_listening(self, on: bool) -> None:
         """Off closes the microphone, so Windows no longer shows it in use, and
         drops whatever was half heard; on opens it again."""
-        self.listen_label.text = "Listening" if on else "Muted"
+        self.ui.listen_label.text = "Listening" if on else "Muted"
         self.listener.muted = not on
         if on:
             if self.whisper_ready.is_set():
@@ -274,8 +174,8 @@ class App(Application, IXamlMetadataProvider):
         self.microphone.stop()
         self.listener.segmenter = None
         self.level_db = -120.0
-        self.level.value = self.level.minimum
-        self.level_text.text = ""
+        self.ui.level.value = self.ui.level.minimum
+        self.ui.level_text.text = ""
 
     async def feed_wavs(self) -> None:
         """--feed-wav: plays files into the listener at real-time pace, with room
@@ -344,12 +244,12 @@ class App(Application, IXamlMetadataProvider):
         # Rounded first, then + 0.0, which turns -0.0 into 0.0: no "-0.0 cm" or "-0°".
         x, y = (round(float(v), 1) + 0.0 for v in position)
         hud = f"x {x:.1f} cm · y {y:.1f} cm · heading {round(world.heading)}° · {speed:.0f} cm/s"
-        if hud != self.hud.text:
-            self.hud.text = hud
+        if hud != self.ui.hud.text:
+            self.ui.hud.text = hud
         pending = ([s.current] if s.current else []) + s.queued
         if pending != self.shown_pending:  # only when it changes, not 60 times a second
             self.shown_pending = pending
-            self.queue_text.text = ("Now: " + describe(pending)) if pending else "Waiting for a command"
+            self.ui.queue_text.text = ("Now: " + describe(pending)) if pending else "Waiting for a command"
 
     def show_level(self, level_db: float, dt: float, now: float) -> None:
         """The microphone level, smoothed like a VU meter: it follows each 30 ms
@@ -357,14 +257,14 @@ class App(Application, IXamlMetadataProvider):
         the gaps between syllables don't make it flicker."""
         tau = LEVEL_RISE_S if level_db > self.level_db else LEVEL_FALL_S
         self.level_db += (max(level_db, -120.0) - self.level_db) * (1 - math.exp(-dt / tau))
-        value = min(max(self.level_db, self.level.minimum), self.level.maximum)
-        if abs(value - self.level.value) >= 0.25:
-            self.level.value = value
+        value = min(max(self.level_db, self.ui.level.minimum), self.ui.level.maximum)
+        if abs(value - self.ui.level.value) >= 0.25:
+            self.ui.level.value = value
         # The number only a few times a second: digits changing 60 times a
         # second are unreadable.
         if now - self.level_text_at >= 0.25:
             self.level_text_at = now
-            self.level_text.text = f"{round(self.level_db)} dBFS"
+            self.ui.level_text.text = f"{round(self.level_db)} dBFS"
 
     # ----- events -------------------------------------------------------------
 
@@ -419,26 +319,26 @@ class App(Application, IXamlMetadataProvider):
             f'<StackPanel Spacing="2"><TextBlock Text={quoteattr(text)} TextWrapping="Wrap" {fore}/>{extra}'
             f"</StackPanel></Border>"
         ).as_(UIElement)
-        self.log.children.append(bubble)
-        while len(self.log.children) > 100:
-            self.log.children.pop(0)
+        self.ui.log.children.append(bubble)
+        while len(self.ui.log.children) > 100:
+            self.ui.log.children.pop(0)
 
     def submit_typed(self) -> None:
-        text = self.typed.text.strip()
+        text = self.ui.typed.text.strip()
         if text:
             self.listener.say(text)
-            self.typed.text = ""
+            self.ui.typed.text = ""
 
     def on_typed_key(self, sender, e: KeyRoutedEventArgs) -> None:
         if e.key == VirtualKey.ENTER:
             self.submit_typed()
 
     def on_key(self, sender, e: KeyRoutedEventArgs) -> None:
-        if e.key == VirtualKey.C and self.typed.focus_state == FocusState.UNFOCUSED:
+        if e.key == VirtualKey.C and self.ui.typed.focus_state == FocusState.UNFOCUSED:
             self.toggle_camera()
 
     def on_wheel(self, sender, e: PointerRoutedEventArgs) -> None:
-        delta = e.get_current_point(self.hud).properties.mouse_wheel_delta
+        delta = e.get_current_point(self.ui.hud).properties.mouse_wheel_delta
         scene = self.view.scene
         scene.zoom = min(4.0, max(0.3, scene.zoom * (0.9 if delta > 0 else 1.1)))  # up is closer
 
@@ -452,7 +352,7 @@ class App(Application, IXamlMetadataProvider):
         self.view.scene.chase = not self.view.scene.chase
 
     def set_status(self, text: str) -> None:
-        self.status.text = text
+        self.ui.status.text = text
 
     def shutdown(self) -> None:
         """Stops everything; the app exits once main() has finished."""

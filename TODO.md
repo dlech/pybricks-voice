@@ -55,6 +55,12 @@ What needs improving, here and in the projects this app is built on.
       continuously need a render thread, as this one has. Posting a
       `WM_MOUSEMOVE` on `WM_NCLBUTTONDOWN` ends the wait and keeps double-click
       working, but it is a hack nothing well-known relies on.
+- [ ] **Typed XAML for Python:** `tools/xaml_types.py` generates a class with a typed
+      attribute for each named element of a `.xaml` file, which is the part of
+      WinUI's XAML compiler Python can have. It could be a PyWinRT tool.
+- [ ] **Keyword arguments for property setters** in generated constructors, as C#'s
+      object initializers (`TextBlock(text="…", font_size=12)`), plus helpers for
+      attached properties, so UI built in code is as short as XAML and typed.
 - [ ] **A deferral helper,** something like `complete_after(deferral, coro)`, plus docs
       on splitting an event handler between the callback and the asyncio loop.
 - [ ] **Docs and samples:** DPI awareness in the WinUI 3 samples, which get stretched on
