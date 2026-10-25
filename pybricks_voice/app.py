@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import ctypes
+import dataclasses
 import logging
 import math
 import pathlib
@@ -23,7 +24,6 @@ import threading
 import time
 import wave
 from typing import override
-from xml.sax.saxutils import quoteattr
 
 import numpy as np
 from winrt.microsoft.ui.xaml import (
@@ -33,24 +33,28 @@ from winrt.microsoft.ui.xaml import (
     LaunchActivatedEventArgs,
     RoutedEventArgs,
     SizeChangedEventArgs,
-    UIElement,
+    Style,
+    Visibility,
     WindowEventArgs,
 )
 from winrt.microsoft.ui.xaml.controls import (
+    ScrollViewerViewChangedEventArgs,
     XamlControlsResources,
 )
 from winrt.microsoft.ui.xaml.input import KeyRoutedEventArgs, PointerRoutedEventArgs
-from winrt.microsoft.ui.xaml.markup import IXamlMetadataProvider, IXamlType, XamlReader, XmlnsDefinition
+from winrt.microsoft.ui.xaml.markup import IXamlMetadataProvider, IXamlType, XmlnsDefinition
 from winrt.microsoft.ui.xaml.xamltypeinfo import XamlControlsXamlMetaDataProvider
 from winrt.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import InitializeOptions, initialize
 from winrt.runtime import ApartmentType, init_apartment
-from winrt.system import Array, Object
+from winrt.system import Array, Object, box_string
+from winrt.windows.foundation import IStringable
 from winrt.windows.system import VirtualKey
 from winrt.windows.ui.xaml.interop import TypeKind, TypeName
 
 from .grammar import describe, suggest
 from .loop import DispatcherQueueEventLoop
 from .main_window import MainWindow
+from .observable_list import ObservableList
 from .physics import Physics, World
 from .robot import SimRobot, State
 from .scene import SceneView, use_d3d12
@@ -59,6 +63,28 @@ from .speech import Heard, Listener, Microphone, Segmenter
 from .whisper import SAMPLE_RATE
 
 log = logging.getLogger(__name__)
+
+
+@dataclasses.dataclass
+class ChatMessage(IStringable):
+    """
+    A message in the chat: main_window.xaml's ChatItem. IStringable makes it a
+    WinRT object, which an ObservableList's items must be.
+    """
+
+    text: str
+    detail: str
+    bubble_style: Style
+    text_style: Style
+
+    @property
+    def detail_visibility(self) -> Visibility:
+        return Visibility.VISIBLE if self.detail else Visibility.COLLAPSED
+
+    @override
+    def to_string(self) -> str:
+        return self.text
+
 
 # The level meter: how quickly it follows the microphone up and down, in
 # seconds, and its range, as main_window.xaml's ProgressBar has it.
@@ -92,12 +118,17 @@ class App(Application, IXamlMetadataProvider):
         self.level_value = LEVEL_MIN_DB
         self.level_line = ""
         self.queue_line = "Waiting for a command"
+        self.following_chat = False  # scrolling to the end: on_chat_view_changed
+        self.chat_at_end = True  # where the chat was when it last stopped scrolling
+        self.messages = ObservableList[ChatMessage]()  # the chat, main_window.xaml's py:ItemsSource
 
     # ----- start up -----------------------------------------------------------
 
     @override
     def _on_launched(self, args: LaunchActivatedEventArgs) -> None:
         self.resources.merged_dictionaries.append(XamlControlsResources())
+        # Errors XAML reports here would otherwise go unseen.
+        self.add_unhandled_exception(lambda s, e: log.error("XAML: %s (0x%08x)", e.message, e.exception & 0xFFFFFFFF))
         # main_window.xaml, with its events wired to the on_* handlers below.
         self.ui = MainWindow(self)
         self.window = self.ui.window
@@ -303,34 +334,49 @@ class App(Application, IXamlMetadataProvider):
             self.add_bubble("\n".join(replies), mine=False)
 
     def add_bubble(self, text: str, mine: bool, detail: str | None = None) -> None:
-        """A message bubble: yours on the right in the accent color, the robot's on the left."""
-        if mine:
-            look = (
-                'HorizontalAlignment="Right" CornerRadius="16,16,4,16" '
-                'Background="{ThemeResource AccentFillColorDefaultBrush}"'
+        """A message in the chat: yours on the right, the robot's on the left."""
+        look = "Mine" if mine else "Robot"
+        styles = self.ui.content.resources
+        self.messages.append(
+            ChatMessage(
+                text,
+                detail or "",
+                styles[box_string(f"{look}Bubble")].as_(Style),
+                styles[box_string(f"{look}Text")].as_(Style),
             )
-            fore = 'Foreground="{ThemeResource TextOnAccentFillColorPrimaryBrush}"'
-        else:
-            look = (
-                'HorizontalAlignment="Left" CornerRadius="16,16,16,4" BorderThickness="1" '
-                'Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" '
-                'BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"'
-            )
-            fore = ""
-        extra = (
-            f'<TextBlock Text={quoteattr(detail)} FontSize="11" Opacity="0.75" TextWrapping="Wrap" {fore}/>'
-            if detail
-            else ""
         )
-        bubble = XamlReader.load(
-            f'<Border xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" {look} '
-            f'MaxWidth="290" Padding="12,8,12,8">'
-            f'<StackPanel Spacing="2"><TextBlock Text={quoteattr(text)} TextWrapping="Wrap" {fore}/>{extra}'
-            f"</StackPanel></Border>"
-        ).as_(UIElement)
-        self.ui.log.children.append(bubble)
-        while len(self.ui.log.children) > 100:
-            self.ui.log.children.pop(0)
+        while len(self.messages) > 100:
+            self.messages.pop(0)
+        # Newest message at the bottom, as in a messaging app: follow the
+        # conversation, once the new bubble is laid out to know its height.
+        if self.ui.log.items_source is not None:  # set by the first update()
+            self.ui.log.update_layout()
+            self.scroll_chat_to_end()
+
+    def scroll_chat_to_end(self) -> None:
+        self.following_chat = True
+        self.ui.scroller.change_view(None, self.ui.scroller.scrollable_height, None)
+
+    def on_chat_view_changed(self, sender: Object, args: ScrollViewerViewChangedEventArgs) -> None:
+        if args.is_intermediate:
+            return
+        scroller = self.ui.scroller
+        self.chat_at_end = scroller.vertical_offset >= scroller.scrollable_height - 0.5
+        # The repeater makes only the bubbles in view, guessing the others'
+        # heights, so the end moves as scrolling makes them: scroll on until
+        # it's reached. Only while following, or the guesses changing as the
+        # view moves would make it shake.
+        if self.following_chat:
+            if self.chat_at_end:
+                self.following_chat = False
+            else:
+                scroller.change_view(None, scroller.scrollable_height, None)
+
+    def on_chat_size_changed(self, sender: Object, args: SizeChangedEventArgs) -> None:
+        # The status and queue lines take room from the chat as they grow;
+        # keep the last message in view if it was.
+        if self.chat_at_end:
+            self.scroll_chat_to_end()
 
     def submit_typed(self) -> None:
         text = self.ui.typed.text.strip()
@@ -373,11 +419,6 @@ class App(Application, IXamlMetadataProvider):
 
     def on_listen_toggled(self, sender: Object, args: RoutedEventArgs) -> None:
         self.set_listening(self.ui.listen.is_on)
-
-    def on_log_size_changed(self, sender: Object, args: SizeChangedEventArgs) -> None:
-        # Newest message at the bottom, as in a messaging app: follow the
-        # conversation once each new bubble has been measured.
-        self.ui.scroller.change_view(None, self.ui.scroller.scrollable_height, None)
 
     def on_closed(self, sender: Object, args: WindowEventArgs) -> None:
         self.shutdown()

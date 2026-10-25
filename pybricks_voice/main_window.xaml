@@ -7,8 +7,27 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:py="https://pybricks.com/pybricks-voice/xaml" mc:Ignorable="py">
-    <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
     <Grid Name="content" py:KeyDown="on_key">
+        <Grid.Resources>
+            <!-- The chat's bubbles: yours on the right in the accent color, the
+                 robot's on the left. Each message says which it is. -->
+            <Style x:Key="MineBubble" TargetType="Border">
+                <Setter Property="HorizontalAlignment" Value="Right"/>
+                <Setter Property="CornerRadius" Value="16,16,4,16"/>
+                <Setter Property="Background" Value="{ThemeResource AccentFillColorDefaultBrush}"/>
+            </Style>
+            <Style x:Key="RobotBubble" TargetType="Border">
+                <Setter Property="HorizontalAlignment" Value="Left"/>
+                <Setter Property="CornerRadius" Value="16,16,16,4"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="Background" Value="{ThemeResource CardBackgroundFillColorDefaultBrush}"/>
+                <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeColorDefaultBrush}"/>
+            </Style>
+            <Style x:Key="MineText" TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{ThemeResource TextOnAccentFillColorPrimaryBrush}"/>
+            </Style>
+            <Style x:Key="RobotText" TargetType="TextBlock"/>
+        </Grid.Resources>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*"/>
             <ColumnDefinition Width="380"/>
@@ -76,11 +95,33 @@
                 <Button Name="reset" py:Click="on_reset" Content="Reset"/>
                 <Button Name="camera" py:Click="on_camera" Content="Camera"/>
             </StackPanel>
-            <ScrollViewer Name="scroller" Grid.Row="4">
-                <StackPanel Name="log" py:SizeChanged="on_log_size_changed" Spacing="8" Padding="0,0,12,0"/>
+            <ScrollViewer Name="scroller" Grid.Row="4" py:ViewChanged="on_chat_view_changed"
+                          py:SizeChanged="on_chat_size_changed">
+                <ItemsRepeater Name="log" py:ItemsSource="messages"
+                               Margin="0,0,12,0">
+                    <ItemsRepeater.Layout><StackLayout Spacing="8"/></ItemsRepeater.Layout>
+                    <ItemsRepeater.ItemTemplate>
+                        <DataTemplate py:Item="ChatItem">
+                            <Border py:Style="bubble_style" MaxWidth="290" Padding="12,8,12,8">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Name="text" py:Text="text" py:Style="text_style" TextWrapping="Wrap"/>
+                                    <TextBlock Name="detail" py:Text="detail" py:Style="text_style"
+                                               py:Visibility="detail_visibility" FontSize="11" Opacity="0.75"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsRepeater.ItemTemplate>
+                </ItemsRepeater>
             </ScrollViewer>
+            <!-- Three lines high however long the queue, so the chat above doesn't
+                 jump as it changes. -->
             <TextBlock Name="queue_text" py:Text="queue_line" Grid.Row="5" Opacity="0.7" TextWrapping="Wrap" MaxLines="3"
-                       TextTrimming="CharacterEllipsis"/>
+                       TextTrimming="CharacterEllipsis" LineHeight="20" LineStackingStrategy="BlockLineHeight"
+                       Height="60"/>
         </Grid>
     </Grid>
+    <!-- After the content: before it, an ItemsRepeater's ItemTemplate makes the
+         app quit as the window shows, with no error (seen with XamlReader). -->
+    <Window.SystemBackdrop><MicaBackdrop/></Window.SystemBackdrop>
 </Window>

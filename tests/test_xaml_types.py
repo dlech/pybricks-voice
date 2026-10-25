@@ -1,5 +1,6 @@
 import importlib.util
 import pathlib
+import tempfile
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
@@ -61,6 +62,62 @@ class TestProblems(unittest.TestCase):
             self.problems("<Buton/><Grid.Columns/>"),
             ["<Buton> isn't a WinUI type", "<Grid.Columns>: Grid has no Columns property"],
         )
+
+
+class TestTemplates(unittest.TestCase):
+    """py: bindings in a DataTemplate, which read from each item."""
+
+    def generate(self, repeater: str) -> str:
+        xaml = (
+            '<Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"'
+            ' xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"'
+            ' xmlns:py="https://pybricks.com/pybricks-voice/xaml" mc:Ignorable="py">' + repeater + "</Window>"
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = pathlib.Path(directory) / "test_window.xaml"
+            path.write_text(xaml, encoding="utf-8")
+            return xaml_types.generate(path)
+
+    def template(self, content: str, item: str = ' py:Item="Row"') -> str:
+        return self.generate(
+            '<ItemsRepeater Name="rows" py:ItemsSource="items"><ItemsRepeater.ItemTemplate>'
+            f"<DataTemplate{item}>{content}</DataTemplate>"
+            "</ItemsRepeater.ItemTemplate></ItemsRepeater>"
+        )
+
+    def test_bindings(self) -> None:
+        code = self.template('<Border py:Style="look"><TextBlock Name="label" py:Text="name"/></Border>')
+        self.assertIn("class Row(typing.Protocol):", code)
+        self.assertIn("    def look(self) -> Style: ...", code)
+        self.assertIn("    def name(self) -> str: ...", code)
+        self.assertIn("        self.rows.add_element_prepared(self._prepare_rows)", code)
+        self.assertIn("        item = typing.cast(Row, self.rows.items_source_view.get_at(args.index))", code)
+        self.assertIn('        label = find("label").as_(TextBlock)', code)
+        self.assertIn("        root.style = item.look", code)
+        self.assertIn("        label.text = item.name", code)
+        self.assertNotIn("self.label", code)  # not an element of the window
+
+    def test_needs_a_repeater(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "only in an ItemsRepeater's ItemTemplate"):
+            self.generate(
+                '<Grid><Grid.Resources><DataTemplate py:Item="Row"><Border/></DataTemplate></Grid.Resources></Grid>'
+            )
+
+    def test_needs_names(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "needs a Name"):
+            self.template('<Border><TextBlock py:Text="name"/></Border>')
+
+    def test_no_events(self) -> None:
+        with self.assertRaisesRegex(SystemExit, "events in a DataTemplate"):
+            self.template('<Button py:Click="on_click"/>')
+
+    def test_event_handler(self) -> None:
+        # EventHandler[Args], whose sender is an Object, rather than TypedEventHandler.
+        code = self.generate('<ScrollViewer Name="scroller" py:ViewChanged="on_view_changed"/>')
+        self.assertIn("self, sender: Object, args: ScrollViewerViewChangedEventArgs, /", code)
+
+    def test_without_item(self) -> None:
+        self.assertNotIn("_prepare_rows", self.template("<Border/>", item=""))
 
 
 if __name__ == "__main__":

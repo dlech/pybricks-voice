@@ -8,14 +8,25 @@ import pathlib
 import typing
 
 from typing_extensions import Sentinel
-from winrt.microsoft.ui.xaml import FrameworkElement, RoutedEventArgs, SizeChangedEventArgs, Window, WindowEventArgs
+from winrt.microsoft.ui.xaml import (
+    FrameworkElement,
+    RoutedEventArgs,
+    SizeChangedEventArgs,
+    Style,
+    Visibility,
+    Window,
+    WindowEventArgs,
+)
 from winrt.microsoft.ui.xaml.controls import (
+    Border,
     Button,
     Canvas,
     Grid,
+    ItemsRepeater,
+    ItemsRepeaterElementPreparedEventArgs,
     ProgressBar,
     ScrollViewer,
-    StackPanel,
+    ScrollViewerViewChangedEventArgs,
     SwapChainPanel,
     TextBlock,
     TextBox,
@@ -41,7 +52,8 @@ class MainWindowCodeBehind(typing.Protocol):
     def on_stop(self, sender: Object, args: RoutedEventArgs, /) -> object: ...
     def on_reset(self, sender: Object, args: RoutedEventArgs, /) -> object: ...
     def on_camera(self, sender: Object, args: RoutedEventArgs, /) -> object: ...
-    def on_log_size_changed(self, sender: Object, args: SizeChangedEventArgs, /) -> object: ...
+    def on_chat_view_changed(self, sender: Object, args: ScrollViewerViewChangedEventArgs, /) -> object: ...
+    def on_chat_size_changed(self, sender: Object, args: SizeChangedEventArgs, /) -> object: ...
     @property
     def hud_line(self) -> str: ...
     @property
@@ -53,7 +65,24 @@ class MainWindowCodeBehind(typing.Protocol):
     @property
     def level_line(self) -> str: ...
     @property
+    def messages(self) -> Object: ...
+    @property
     def queue_line(self) -> str: ...
+
+
+class ChatItem(typing.Protocol):
+    """An item of log, the ItemsRepeater: what its DataTemplate's py: bindings read."""
+
+    @property
+    def bubble_style(self) -> Style: ...
+    @property
+    def text(self) -> str: ...
+    @property
+    def text_style(self) -> Style: ...
+    @property
+    def detail(self) -> str: ...
+    @property
+    def detail_visibility(self) -> Visibility: ...
 
 
 class MainWindow:
@@ -80,7 +109,7 @@ class MainWindow:
         self.reset = find("reset").as_(Button)
         self.camera = find("camera").as_(Button)
         self.scroller = find("scroller").as_(ScrollViewer)
-        self.log = find("log").as_(StackPanel)
+        self.log = find("log").as_(ItemsRepeater)
         self.queue_text = find("queue_text").as_(TextBlock)
         self.window.add_closed(code_behind.on_closed)
         self.content.add_key_down(code_behind.on_key)
@@ -91,7 +120,9 @@ class MainWindow:
         self.stop.add_click(code_behind.on_stop)
         self.reset.add_click(code_behind.on_reset)
         self.camera.add_click(code_behind.on_camera)
-        self.log.add_size_changed(code_behind.on_log_size_changed)
+        self.scroller.add_view_changed(code_behind.on_chat_view_changed)
+        self.scroller.add_size_changed(code_behind.on_chat_size_changed)
+        self.log.add_element_prepared(self._prepare_log)
 
     def update(self) -> None:
         """Sets each bound property whose value in the code-behind has changed, as Bindings.Update()."""
@@ -106,5 +137,21 @@ class MainWindow:
             self.listen_label.text = shown["listen_label.text"] = value
         if (value := code_behind.level_line) != shown.get("level_text.text", _UNSET):
             self.level_text.text = shown["level_text.text"] = value
+        if (value := code_behind.messages) != shown.get("log.items_source", _UNSET):
+            self.log.items_source = shown["log.items_source"] = value
         if (value := code_behind.queue_line) != shown.get("queue_text.text", _UNSET):
             self.queue_text.text = shown["queue_text.text"] = value
+
+    def _prepare_log(self, sender: Object, args: ItemsRepeaterElementPreparedEventArgs) -> None:
+        """Sets the bound properties of an element of log from its item, as it is prepared."""
+        item = typing.cast(ChatItem, self.log.items_source_view.get_at(args.index))
+        root = args.element.as_(Border)
+        find = root.find_name
+        text = find("text").as_(TextBlock)
+        detail = find("detail").as_(TextBlock)
+        root.style = item.bubble_style
+        text.text = item.text
+        text.style = item.text_style
+        detail.text = item.detail
+        detail.style = item.text_style
+        detail.visibility = item.detail_visibility

@@ -72,7 +72,8 @@ What needs improving, here and in the projects this app is built on.
       `update()` when it changes. The handlers and values are a Protocol typed from
       the stubs' delegates and setters, so pyright checks them as C#'s compiler
       checks code-behind. It also checks every element, attribute and property
-      element against the stubs, as the compiler would. It could be a PyWinRT tool.
+      element against the stubs, as the compiler would. Bindings in an
+      `ItemsRepeater`'s `DataTemplate` read from each item. It could be a PyWinRT tool.
 - [ ] **XAML metadata from the PyWinRT generator,** for that tool to read rather than
       the stubs' signature comments or the private `_table.pywinrt`: per package, a
       small documented file (JSON, say) with each type's WinRT and Python names, its
@@ -80,18 +81,24 @@ What needs improving, here and in the projects this app is built on.
       their delegates' Python sender and arguments types already resolved, its
       `[ContentProperty]`, and enum members. Then values can be checked too
       (`Visibility="Colapsed"`), and children against content properties.
-- [ ] **Lists and item templates from Python,** so the chat could be an
-      `ItemsRepeater` with a `DataTemplate` over its messages rather than bubbles
-      built from XAML strings. Two ways:
-      - **Try first:** compiled bindings, as `x:Bind` does in a template. The
-        generator makes a Python class implementing `IDataTemplateComponent`
-        (`ProcessBindings`, `Recycle`) for each template, attached to its root with
-        `XamlBindingHelper.SetDataTemplateComponent`, and the list calls it as it
-        realizes each item. Typed, and needs nothing new from PyWinRT, which can
-        already implement WinRT interfaces in Python. Untried: check what else the
-        list asks of the component.
-      - **Otherwise:** XAML's own `{Binding}`, for which PyWinRT would have to let
-        Python objects be `ICustomPropertyProvider` and `INotifyPropertyChanged`.
+- [x] **Lists and item templates from Python:** the chat is an `ItemsRepeater` whose
+      `DataTemplate` binds with `py:` too, to each item (`py:Item="ChatItem"` names
+      their Protocol). The generated class sets them in the repeater's
+      `ElementPrepared`, so neither `IDataTemplateComponent` nor `{Binding}` was
+      needed. Its `ItemsSource` is `pybricks_voice/observable_list.py`.
+- [ ] **An observable list,** `ObservableList` as in `pybricks_voice/observable_list.py`:
+      a Python list that implements WinUI's non-generic `IBindableVector` and
+      `INotifyCollectionChanged`, as C#'s `ObservableCollection` does. PyWinRT can't
+      implement `IObservableVector<T>`, being generic, so every app that shows a
+      list would otherwise write this.
+- [ ] **An event helper** for Python classes that implement a WinRT event, as
+      C++/WinRT's `winrt::event` or C#'s `event` keyword: `Event[H]` with `add()`,
+      `remove()` and calling it, as in `pybricks_voice/winrt_event.py`, so no one
+      writes the handler dict and tokens again.
+- [ ] **Event tokens for implementers:** `EventRegistrationToken` can't be made in
+      Python ("WinRT issues a token", say the stubs), but an implementation of
+      `add_<event>()` has to issue one. Returning an `int` works, against the stubs.
+      The event helper would hide it; the stubs and docs should allow it.
 - [ ] **Keyword arguments for property setters** in generated constructors, as C#'s
       object initializers (`TextBlock(text="…", font_size=12)`), plus helpers for
       attached properties, so UI built in code is as short as XAML and typed.
@@ -99,6 +106,16 @@ What needs improving, here and in the projects this app is built on.
       on splitting an event handler between the callback and the asyncio loop.
 - [ ] **Docs and samples:** DPI awareness in the WinUI 3 samples, which get stretched on
       scaled displays.
+
+### WinUI
+
+- [ ] **A window quits silently** when its `Window.SystemBackdrop` (Mica or acrylic)
+      comes before content holding an `ItemsRepeater` with an `ItemTemplate`, loaded
+      with `XamlReader`: `Application.Start` returns as the window shows, with no
+      error or `UnhandledException`. After the content it works, as does a
+      `ListView`'s template. The smallest case is a `Window` holding just the
+      backdrop, then an `ItemsRepeater` whose template is a `<Border/>`. Check it
+      in C# and report it.
 
 ### wgpu-py
 

@@ -18,6 +18,13 @@ handlers have the sender and arguments each event's delegate has in PyWinRT's
 stubs, and its bound values the type of their property's setter, so pyright
 checks that the object has them all, of the right types.
 
+Inside a DataTemplate, py: bindings read from each item rather than from the
+code-behind. The template names its items' protocol, <DataTemplate
+py:Item="ChatItem">, and the class sets the bound properties of each item's
+elements as an ItemsRepeater prepares them (ElementPrepared), with the items
+typed by that protocol. The repeater's ItemsSource is any list XAML reads,
+such as pybricks_voice.observable_list.ObservableList.
+
 First it checks the XAML the way WinUI's compiler would, against the WinRT
 signatures the stubs have in comments: every element is a WinUI type, every
 attribute a settable property of its element or an attached property of its
@@ -36,6 +43,7 @@ run it).
 
 import argparse
 import ast
+import dataclasses
 import functools
 import importlib
 import pathlib
@@ -154,9 +162,11 @@ BUILTINS = {"str", "int", "float", "bool", "bytes"}
 
 
 def _delegate(annotation: ast.expr, module: str) -> tuple[Type, Type]:
-    # TypedEventHandler[Sender, Args], or an alias for Callable[[Sender, Args], object].
+    # TypedEventHandler[Sender, Args], EventHandler[Args] (whose sender is an
+    # Object), or an alias for Callable[[Sender, Args], object].
     if isinstance(annotation, ast.Subscript):
-        assert isinstance(annotation.slice, ast.Tuple)
+        if not isinstance(annotation.slice, ast.Tuple):
+            return ("winrt.system", "Object"), _resolve(annotation.slice, module)
         sender, args = annotation.slice.elts
         return _resolve(sender, module), _resolve(args, module)
     alias_module, name = _resolve(annotation, module)
@@ -238,6 +248,8 @@ def problems(root: ElementTree.Element) -> list[str]:
         for key in element.attrib:
             namespace, attribute = _split(key)
             if namespace == PY:
+                if tag == "DataTemplate" and attribute == "Item":
+                    continue  # its items' protocol
                 if not {f"add_{attribute}", f"put_{attribute}"} & names:
                     found.append(f"{label}: py:{attribute} is neither an event nor a settable property")
                 continue
@@ -259,6 +271,18 @@ def problems(root: ElementTree.Element) -> list[str]:
     return found
 
 
+@dataclasses.dataclass
+class _Template:
+    """A DataTemplate with py: bindings, and the ItemsRepeater it is the ItemTemplate of."""
+
+    item: str  # its items' protocol
+    owner: str  # the repeater's name
+    root: Type | None = None
+    bindings: list[tuple[str | None, Type, str, str]] = dataclasses.field(default_factory=list)
+    # (element's name, None for the root; its type; Python property; item attribute)
+    sources: dict[str, Type] = dataclasses.field(default_factory=dict)
+
+
 def generate(xaml: pathlib.Path) -> str:
     root = ElementTree.parse(xaml).getroot()
     if found := problems(root):
@@ -270,7 +294,50 @@ def generate(xaml: pathlib.Path) -> str:
     handlers: dict[str, tuple[Type, Type]] = {}  # handler: (sender, args)
     bindings: list[tuple[str, str, str]] = []  # (attribute, Python property, source)
     sources: dict[str, Type] = {}  # source: the setter's type
+    templates: dict[ElementTree.Element, _Template] = {}
+    parents = {child: parent for parent in root.iter() for child in parent}
+
+    def template_of(element: ElementTree.Element) -> ElementTree.Element | None:
+        while (element := parents.get(element)) is not None:  # pyright: ignore[reportAssignmentType]
+            if element in templates:
+                return element
+        return None
+
     for element in root.iter():
+        if _split(element.tag) == (PRESENTATION, "DataTemplate"):
+            item = element.get(f"{{{PY}}}Item")
+            holder = parents.get(element)
+            owner = parents.get(holder) if holder is not None else None
+            if not item:
+                continue  # a template without bindings
+            if holder is None or owner is None or _split(holder.tag)[1] != "ItemsRepeater.ItemTemplate":
+                raise SystemExit(f"{xaml.name}: py:Item works only in an ItemsRepeater's ItemTemplate, so far")
+            if not owner.get("Name"):
+                raise SystemExit(f"{xaml.name}: the ItemsRepeater of py:Item={item!r} needs a Name")
+            templates[element] = _Template(item, owner.get("Name") or "")
+            continue
+        if (template := template_of(element)) is not None:
+            info = templates[template]
+            if "." in _split(element.tag)[1]:
+                continue  # a property element
+            type_ = winrt_type(element.tag)
+            is_root = parents[element] is template
+            if is_root:
+                info.root = type_
+            name = element.get("Name") or element.get(f"{{{X}}}Name")
+            for key, target in element.attrib.items():
+                if not key.startswith(f"{{{PY}}}"):
+                    continue
+                member = key.removeprefix(f"{{{PY}}}")
+                if f"add_{member}" in members(type_):
+                    raise SystemExit(f"{xaml.name}: events in a DataTemplate aren't supported yet (py:{member})")
+                if not is_root and not name:
+                    raise SystemExit(f"{xaml.name}: an element in a DataTemplate with py:{member} needs a Name")
+                prop, value = find_setter(type_, member)
+                if info.sources.setdefault(target, value) != value:
+                    raise SystemExit(f"{xaml.name}: {info.item}.{target} is bound to properties of different types")
+                info.bindings.append((None if is_root else name, type_, prop, target))
+            continue
         name = element.get("Name") or element.get(f"{{{X}}}Name")
         if element is root:
             name = root_attribute
@@ -307,6 +374,40 @@ def generate(xaml: pathlib.Path) -> str:
     for module, type_ in sources.values():
         if module != "builtins":
             imports.setdefault(module, set()).add(type_)
+    for info in templates.values():
+        if info.root is None:
+            raise SystemExit(f"{xaml.name}: the DataTemplate of {info.item} is empty")
+        imports.setdefault("winrt.microsoft.ui.xaml.controls", set()).add("ItemsRepeaterElementPreparedEventArgs")
+        imports.setdefault("winrt.system", set()).add("Object")
+        for module, type_ in [info.root, *(t for _, t, _, _ in info.bindings), *info.sources.values()]:
+            if module != "builtins":
+                imports.setdefault(module, set()).add(type_)
+
+    def template_protocol(info: _Template) -> list[str]:
+        return [
+            "",
+            "",
+            f"class {info.item}(typing.Protocol):",
+            f'    """An item of {info.owner}, the ItemsRepeater: what its DataTemplate\'s py: bindings read."""',
+            "",
+            *(f"    @property\n    def {source}(self) -> {value[1]}: ..." for source, value in info.sources.items()),
+        ]
+
+    def template_method(info: _Template) -> list[str]:
+        assert info.root is not None
+        named = list(dict.fromkeys((name, type_) for name, type_, _, _ in info.bindings if name))
+        return [
+            "",
+            f"    def _prepare_{info.owner}(self, sender: Object, args: ItemsRepeaterElementPreparedEventArgs)"
+            " -> None:",
+            f'        """Sets the bound properties of an element of {info.owner} from its item, as it is prepared."""',
+            f"        item = typing.cast({info.item}, self.{info.owner}.items_source_view.get_at(args.index))",
+            f"        root = args.element.as_({info.root[1]})",
+            *(["        find = root.find_name"] if named else []),
+            *(f'        {name} = find("{name}").as_({type_[1]})' for name, type_ in named),
+            *(f"        {name or 'root'}.{prop} = item.{source}" for name, _, prop, source in info.bindings),
+        ]
+
     class_name = "".join(part.title() for part in xaml.stem.split("_"))
     # A Window's elements are found from its content; any other root, from itself.
     scope = f"self.{root_attribute}.content" if root_type == "Window" else f"self.{root_attribute}"
@@ -335,6 +436,7 @@ def generate(xaml: pathlib.Path) -> str:
             for handler, (sender, args) in handlers.items()
         ),
         *(f"    @property\n    def {source}(self) -> {value[1]}: ..." for source, value in sources.items()),
+        *(line for info in templates.values() for line in template_protocol(info)),
         "",
         "",
         f"class {class_name}:",
@@ -347,6 +449,7 @@ def generate(xaml: pathlib.Path) -> str:
         f"        find = {scope}.as_(FrameworkElement).find_name",
         *(f'        self.{name} = find("{name}").as_({type_})' for name, _, type_ in named),
         *(f"        self.{attribute}.{add}(code_behind.{handler})" for attribute, add, handler in wiring),
+        *(f"        self.{info.owner}.add_element_prepared(self._prepare_{info.owner})" for info in templates.values()),
         "",
         "    def update(self) -> None:",
         '        """Sets each bound property whose value in the code-behind has changed, as Bindings.Update()."""',
@@ -357,6 +460,7 @@ def generate(xaml: pathlib.Path) -> str:
             for attribute, prop, source in bindings
         ),
         *([] if bindings else ["        del code_behind, shown"]),
+        *(line for info in templates.values() for line in template_method(info)),
     ]
     formatted = subprocess.run(
         [sys.executable, "-m", "ruff", "format", "--stdin-filename", str(xaml.with_suffix(".py")), "-"],
