@@ -71,14 +71,30 @@ select = [
     "T20",     # no print(): the app logs
     "G",       # logging calls let logging do the formatting
     "D209", "D213",  # multi-line docstrings: """ on lines of their own
+    "ASYNC",   # no blocking calls in coroutines: they would stall the UI thread
+    "TID251",  # the banned APIs below
 ]
 ignore = [
     "RUF001", "RUF002", "RUF003",  # ×, °, “” and … are meant in user-facing text and comments
 ]
 
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+# The app's asyncio loop is a guest of WinUI's DispatcherQueue (loop.py): it
+# is already running, and must be the only one.
+"asyncio.run".msg = "the app's loop is already running (loop.py): create a task on it"
+"asyncio.get_event_loop".msg = "use asyncio.get_running_loop()"
+"asyncio.new_event_loop".msg = "the app has one loop, a guest of the UI thread (loop.py)"
+"asyncio.set_event_loop".msg = "the app has one loop, a guest of the UI thread (loop.py)"
+# Structured concurrency: tasks live in a TaskGroup, which cancels the rest and
+# raises when one fails, and time limits are asyncio.timeout() blocks.
+"asyncio.gather".msg = "use an asyncio.TaskGroup: it cancels the others when one fails"
+"asyncio.wait".msg = "use an asyncio.TaskGroup, or asyncio.timeout() for a time limit"
+"asyncio.wait_for".msg = "use an asyncio.timeout() block"
+"asyncio.shield".msg = "let cancellation through: shielded work outlives the task that awaited it"
+
 [tool.ruff.lint.per-file-ignores]
-# Command-line scripts, where printing is the point.
-"tools/*" = ["T20"]
+# Command-line scripts, where printing is the point, and with loops of their own.
+"tools/*" = ["T20", "TID251"]
 "spikes/*" = ["T20"]
 
 [tool.pyright]

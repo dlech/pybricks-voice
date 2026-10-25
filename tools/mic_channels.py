@@ -7,7 +7,6 @@ Usage: uv run tools/mic_channels.py [seconds]
 import asyncio
 import pathlib
 import sys
-import time
 
 import numpy as np
 
@@ -40,7 +39,7 @@ async def capture(category: MediaCategory, seconds: float) -> tuple[np.ndarray, 
 
     graph.add_quantum_started(quantum)
     graph.start()
-    time.sleep(seconds)
+    await asyncio.sleep(seconds)
     graph.stop()
     graph.close()
     return np.concatenate(chunks), rate

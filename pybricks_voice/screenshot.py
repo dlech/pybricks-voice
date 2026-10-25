@@ -31,8 +31,11 @@ from winrt.windows.storage.streams import DataReader, InMemoryRandomAccessStream
 log = logging.getLogger(__name__)
 
 
-async def _capture(window: Window, timeout: float) -> SoftwareBitmap:
-    """One frame of the window, as it is on screen."""
+async def _capture(window: Window) -> SoftwareBitmap:
+    """
+    One frame of the window, as it is on screen. It waits for the frame as
+    long as it takes: a caller that wants a limit sets one, asyncio.timeout().
+    """
     item = create_for_window(get_window_from_window_id(window.app_window.id))
     loop = asyncio.get_running_loop()
     arrived: asyncio.Future[None] = loop.create_future()
@@ -61,8 +64,7 @@ async def _capture(window: Window, timeout: float) -> SoftwareBitmap:
             session.is_border_required = False
         session.is_cursor_capture_enabled = False
         session.start_capture()
-        async with asyncio.timeout(timeout):
-            await arrived
+        await arrived
         frame = pool.try_get_next_frame()
         if frame is None:
             raise RuntimeError("FrameArrived without a frame")
@@ -70,10 +72,15 @@ async def _capture(window: Window, timeout: float) -> SoftwareBitmap:
             return await SoftwareBitmap.create_copy_from_surface_async(frame.surface)
 
 
-async def save_window(window: Window, path: pathlib.Path, timeout: float = 2.0) -> None:
+def _write(path: pathlib.Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
+
+
+async def save_window(window: Window, path: pathlib.Path) -> None:
     """Saves one frame of the window, as it is on screen, to a PNG."""
     with (
-        await _capture(window, timeout) as bitmap,
+        await _capture(window) as bitmap,
         # The frame is premultiplied BGRA; a PNG of the window wants it opaque.
         SoftwareBitmap.convert(bitmap, BitmapPixelFormat.BGRA8, BitmapAlphaMode.IGNORE) as opaque,
         InMemoryRandomAccessStream() as stream,
@@ -84,6 +91,5 @@ async def save_window(window: Window, path: pathlib.Path, timeout: float = 2.0) 
         with DataReader(stream.get_input_stream_at(0)) as reader:
             data = bytes(reader.read_buffer(await reader.load_async(stream.size)))
         width, height = opaque.pixel_width, opaque.pixel_height
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(data)
+    await asyncio.to_thread(_write, path, data)  # not on the UI thread
     log.info("saved %s (%d x %d)", path, width, height)

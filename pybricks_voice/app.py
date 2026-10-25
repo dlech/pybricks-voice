@@ -127,7 +127,8 @@ class App(Application, IXamlMetadataProvider):
         if self.options.quit_after:
             await asyncio.sleep(self.options.quit_after - (time.perf_counter() - started))
             if self.options.screenshot:
-                await save_window(self.window, self.options.screenshot)
+                async with asyncio.timeout(2):
+                    await save_window(self.window, self.options.screenshot)
             self.shutdown()
 
     async def speech(self) -> None:
