@@ -252,9 +252,11 @@ class Listener:
 
     def _transcribe(self, audio: np.ndarray, rate: int) -> tuple[str, Timing]:
         """On the Whisper thread."""
-        assert self._whisper is not None, "start() first"
         audio16 = resample(audio, rate)
-        text, timing = self._whisper.transcribe(audio16)
+        if self._whisper is None:  # it didn't load: nothing heard, but --record keeps it
+            text, timing = "", Timing(0, 0, 0, 0)
+        else:
+            text, timing = self._whisper.transcribe(audio16)
         self._record(audio16, text)
         return text, timing
 

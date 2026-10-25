@@ -73,6 +73,7 @@ class Core(abc.ABC):
         self.frame: tuple[World, State, float] | None = None  # the latest, from the render thread
         self.scene_ready = asyncio.Event()
         self.whisper_ready = asyncio.Event()
+        self.whisper_tried = asyncio.Event()  # loaded or not: the microphone can open
         self.last_tick = time.perf_counter()
         self.tick_gaps: list[float] = []
         self.shown_pending: list | None = None
@@ -156,8 +157,10 @@ class Core(abc.ABC):
         else:
             self.whisper_ready.set()
             self.set_status(f"Whisper loaded in {load_s:.1f} s")
-            if self.listening:
-                await self.open_microphone()
+        # Without Whisper, the level meter still shows what the microphone hears.
+        self.whisper_tried.set()
+        if self.listening:
+            await self.open_microphone()
         async for heard in self.listener.heard():
             self.on_heard(heard)
 
@@ -181,7 +184,7 @@ class Core(abc.ABC):
         self.listen_line = "Listening" if on else "Muted"
         self.listener.muted = not on
         if on:
-            if self.whisper_ready.is_set():
+            if self.whisper_tried.is_set():
                 self.microphone_task = self.loop.create_task(self.open_microphone())
             return
         self.microphone.stop()

@@ -117,7 +117,7 @@ ignore = [
 pythonVersion = "3.14"
 typeCheckingMode = "standard"
 include = ["pybricks_voice", "tests", "tools"]
-# AppKit through rubicon-objc, which has no types for the frameworks yet:
+# AppKit and AVFoundation through rubicon-objc, which has no types for them yet:
 # generated bindings will bring them.
-ignore = ["pybricks_voice/macos/app.py", "pybricks_voice/macos/scene_view.py"]
+ignore = ["pybricks_voice/macos/app.py", "pybricks_voice/macos/microphone.py", "pybricks_voice/macos/scene_view.py"]
 extraPaths = ["tools"]

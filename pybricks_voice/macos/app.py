@@ -4,7 +4,7 @@ rubicon-objc.
 
 NSApplication's run() owns the main thread, and asyncio runs as its guest
 (see loop.py); the 3D view draws into a CAMetalLayer (see scene_view.py).
-Whisper and the microphone come later: typed commands work meanwhile.
+Whisper comes later: the microphone's level shows, and typed commands work.
 
 The AppKit calls aren't type checked yet: rubicon-objc has no types for the
 frameworks, which generated bindings will bring.
@@ -42,6 +42,7 @@ from ..speech import Microphone
 from ..whisper import Transcriber
 from .corefoundation import CFRunLoopGetMain, CFRunLoopRunInMode, kCFRunLoopDefaultMode
 from .loop import CFRunLoopEventLoop
+from .microphone import AVAudioEngineMicrophone
 from .scene_view import SceneView
 
 log = logging.getLogger(__name__)
@@ -85,19 +86,6 @@ NSViewFrameDidChangeNotification = objc_const(appkit, "NSViewFrameDidChangeNotif
 SIDE_WIDTH = 380  # the controls and the chat, to the right of the 3D view
 MAX_BUBBLE_WIDTH = 290
 LEVEL_MIN_DB, LEVEL_MAX_DB = -70.0, -10.0
-
-
-class NoMicrophone:
-    """Until the macOS microphone arrives: never open."""
-
-    rate = 16000
-    is_open = False
-
-    async def start(self) -> None:
-        raise RuntimeError("no microphone on macOS yet")
-
-    def stop(self) -> None:
-        pass
 
 
 class PybricksVoiceFlippedView(NSView):  # an Objective-C class: its name is global
@@ -445,7 +433,7 @@ class MacApp(Core):
 
     @override
     def make_microphone(self, on_samples: Callable[[np.ndarray], None]) -> Microphone:
-        return NoMicrophone()
+        return AVAudioEngineMicrophone(on_samples)
 
     @override
     def load_whisper(self) -> Transcriber:
