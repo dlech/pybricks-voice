@@ -56,8 +56,11 @@ What needs improving, here and in the projects this app is built on.
       `WM_MOUSEMOVE` on `WM_NCLBUTTONDOWN` ends the wait and keeps double-click
       working, but it is a hack nothing well-known relies on.
 - [ ] **Typed XAML for Python:** `tools/xaml_types.py` generates a class with a typed
-      attribute for each named element of a `.xaml` file, which is the part of
-      WinUI's XAML compiler Python can have. It could be a PyWinRT tool.
+      attribute for each named element of a `.xaml` file, and wires events to
+      handlers named in the XAML as `py:Click="..."` in an `mc:Ignorable`
+      namespace (XamlReader rejects plain event attributes). The handlers are a
+      Protocol typed from the stubs' delegates, so pyright checks them as C#'s
+      compiler checks code-behind. It could be a PyWinRT tool.
 - [ ] **Keyword arguments for property setters** in generated constructors, as C#'s
       object initializers (`TextBlock(text="…", font_size=12)`), plus helpers for
       attached properties, so UI built in code is as short as XAML and typed.

@@ -30,7 +30,10 @@ from winrt.microsoft.ui.xaml import (
     DispatcherShutdownMode,
     FocusState,
     LaunchActivatedEventArgs,
+    RoutedEventArgs,
+    SizeChangedEventArgs,
     UIElement,
+    WindowEventArgs,
 )
 from winrt.microsoft.ui.xaml.controls import (
     XamlControlsResources,
@@ -40,7 +43,7 @@ from winrt.microsoft.ui.xaml.markup import IXamlMetadataProvider, IXamlType, Xam
 from winrt.microsoft.ui.xaml.xamltypeinfo import XamlControlsXamlMetaDataProvider
 from winrt.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import InitializeOptions, initialize
 from winrt.runtime import ApartmentType, init_apartment
-from winrt.system import Array
+from winrt.system import Array, Object
 from winrt.windows.graphics import SizeInt32
 from winrt.windows.system import VirtualKey
 from winrt.windows.ui.xaml.interop import TypeKind, TypeName
@@ -85,26 +88,12 @@ class App(Application, IXamlMetadataProvider):
     @override
     def _on_launched(self, args: LaunchActivatedEventArgs) -> None:
         self.resources.merged_dictionaries.append(XamlControlsResources())
-        self.ui = MainWindow()  # main_window.xaml
+        # main_window.xaml, with its events wired to the on_* handlers below.
+        self.ui = MainWindow(self)
         self.window = self.ui.window
         self.window.title = "Pybricks voice driving · Whisper on the NPU"
         self.window.app_window.resize(SizeInt32(1600, 1000))
         self.view = SceneView(self.ui.host, self.ui.panel, self.step)
-        # Newest message at the bottom, as in a messaging app: follow the
-        # conversation once each new bubble has been measured.
-        self.ui.log.add_size_changed(
-            lambda s, e: self.ui.scroller.change_view(None, self.ui.scroller.scrollable_height, None)
-        )
-
-        self.ui.go.add_click(lambda s, e: self.submit_typed())
-        self.ui.stop.add_click(lambda s, e: self.robot.stop())
-        self.ui.reset.add_click(lambda s, e: self.reset())
-        self.ui.camera.add_click(lambda s, e: self.toggle_camera())
-        self.ui.typed.add_key_down(self.on_typed_key)
-        self.window.content.add_key_down(self.on_key)
-        self.ui.scene_area.add_pointer_wheel_changed(self.on_wheel)
-        self.ui.listen.add_toggled(lambda s, e: self.set_listening(self.ui.listen.is_on))
-        self.window.add_closed(lambda s, e: self.shutdown())
 
         # Closing the window starts shutdown(), and the app exits once main() has
         # unwound, which takes the loop a few more iterations.
@@ -329,27 +318,49 @@ class App(Application, IXamlMetadataProvider):
             self.listener.say(text)
             self.ui.typed.text = ""
 
-    def on_typed_key(self, sender, e: KeyRoutedEventArgs) -> None:
-        if e.key == VirtualKey.ENTER:
+    def toggle_camera(self) -> None:
+        self.view.scene.chase = not self.view.scene.chase
+
+    # ----- main_window.xaml's handlers ------------------------------------------
+
+    def on_go(self, sender: Object, args: RoutedEventArgs) -> None:
+        self.submit_typed()
+
+    def on_typed_key(self, sender: Object, args: KeyRoutedEventArgs) -> None:
+        if args.key == VirtualKey.ENTER:
             self.submit_typed()
 
-    def on_key(self, sender, e: KeyRoutedEventArgs) -> None:
-        if e.key == VirtualKey.C and self.ui.typed.focus_state == FocusState.UNFOCUSED:
+    def on_key(self, sender: Object, args: KeyRoutedEventArgs) -> None:
+        if args.key == VirtualKey.C and self.ui.typed.focus_state == FocusState.UNFOCUSED:
             self.toggle_camera()
 
-    def on_wheel(self, sender, e: PointerRoutedEventArgs) -> None:
-        delta = e.get_current_point(self.ui.hud).properties.mouse_wheel_delta
+    def on_camera(self, sender: Object, args: RoutedEventArgs) -> None:
+        self.toggle_camera()
+
+    def on_wheel(self, sender: Object, args: PointerRoutedEventArgs) -> None:
+        delta = args.get_current_point(self.ui.hud).properties.mouse_wheel_delta
         scene = self.view.scene
         scene.zoom = min(4.0, max(0.3, scene.zoom * (0.9 if delta > 0 else 1.1)))  # up is closer
 
-    def reset(self) -> None:
+    def on_stop(self, sender: Object, args: RoutedEventArgs) -> None:
+        self.robot.stop()
+
+    def on_reset(self, sender: Object, args: RoutedEventArgs) -> None:
         self.robot.reset()
         with self.physics_lock:
             self.physics.reset()
         self.view.reset()
 
-    def toggle_camera(self) -> None:
-        self.view.scene.chase = not self.view.scene.chase
+    def on_listen_toggled(self, sender: Object, args: RoutedEventArgs) -> None:
+        self.set_listening(self.ui.listen.is_on)
+
+    def on_log_size_changed(self, sender: Object, args: SizeChangedEventArgs) -> None:
+        # Newest message at the bottom, as in a messaging app: follow the
+        # conversation once each new bubble has been measured.
+        self.ui.scroller.change_view(None, self.ui.scroller.scrollable_height, None)
+
+    def on_closed(self, sender: Object, args: WindowEventArgs) -> None:
+        self.shutdown()
 
     def set_status(self, text: str) -> None:
         self.ui.status.text = text
