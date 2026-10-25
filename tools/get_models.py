@@ -100,6 +100,7 @@ def get_coreml(target: pathlib.Path) -> None:
 
 def prepare_neural_engine(target: pathlib.Path) -> None:
     """Loads the models for the Neural Engine once, so the app finds them compiled."""
+    assert sys.platform == "darwin"  # and type checking for another platform stops here
     sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
     from pybricks_voice.macos.whisper_coreml import MLComputeUnitsCPUAndNeuralEngine, load
 
