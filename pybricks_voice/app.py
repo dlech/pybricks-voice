@@ -367,12 +367,15 @@ class App(Application, IXamlMetadataProvider):
             detail = "typed"
         self.add_bubble(heard.text, mine=True, detail=detail)
 
-        # The robot answers remarks and what it didn't understand; a command
-        # needs no echo, since the robot does it and the queue line names it.
+        # The robot answers remarks and what it didn't understand, without
+        # repeating what was said: that is in the bubble just above, and a
+        # command needs no echo, since the robot does it and the queue line
+        # names it.
         replies = list(heard.parse.remarks)
-        for segment in heard.parse.not_understood:
-            tries = " or ".join(f"“{s}”" for s in suggest(segment))
-            replies.append(f"I didn't get “{segment}”. Try {tries}.")
+        if heard.parse.not_understood:
+            what = "all of that" if heard.parse.commands else "that"
+            tries = " or ".join(f"“{s}”" for s in suggest(" ".join(heard.parse.not_understood)))
+            replies.append(f"I didn't get {what}. Try {tries}.")
         if replies:  # "Oh my" on its own needs no answer
             self.add_bubble("\n".join(replies), mine=False)
 
