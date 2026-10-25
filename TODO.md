@@ -36,6 +36,17 @@ What needs improving, here and in the projects this app is built on.
 - [ ] **A WinUI startup helper** for unpackaged apps: DPI awareness (`python.exe`'s
       manifest declares none), AppUserModelID, apartment and bootstrap, and the
       `IXamlMetadataProvider` boilerplate.
+- [ ] **The guest loop's timer is coarse:** its `DispatcherQueueTimer` fires on the
+      system's ~15.6 ms tick, so a 16 ms `asyncio.sleep` often takes 31 or 47 ms
+      (see `spikes/drag_stall.py`). The iocp-handoff thread could wait with a
+      high-resolution waitable timer instead and enqueue the iteration itself.
+- [ ] **Document the drag-start stall:** pressing on the title bar or a border
+      blocks the UI thread in `DefWindowProc` (`SC_MOVE`/`SC_SIZE`, in the kernel)
+      until the mouse moves, dispatching nothing, so the guest loop stops too;
+      inside the move loop that follows it runs fine. Apps that draw
+      continuously need a render thread, as this one has. Posting a
+      `WM_MOUSEMOVE` on `WM_NCLBUTTONDOWN` ends the wait and keeps double-click
+      working, but it is a hack nothing well-known relies on.
 - [ ] **A deferral helper,** something like `complete_after(deferral, coro)`, plus docs
       on splitting an event handler between the callback and the asyncio loop.
 - [ ] **Docs and samples:** DPI awareness in the WinUI 3 samples, which get stretched on
