@@ -70,3 +70,25 @@ four sides, offscreen with pygfx, to check `pybricks_voice/ldraw.py` and
 ```
 uv run python spikes/ldraw_preview.py pybricks_voice/models/ldraw --model pybricks_voice/models/driving_base.ldr --out out/driving_base.png
 ```
+
+## GPU cost
+
+`gpu_cost.py` renders the app's `RobotScene` into a texture at the view's
+size, 60 times a second, with one thing off at a time, and reads its own 3D
+engine use from Windows' "GPU Engine" counter. At 1637 × 1394 pixels (a
+window at 200% scale) on the Adreno X1-85:
+
+- pygfx's defaults (2× supersampling, mitchell filter, DDAA): 48%
+- without shadows or without the floor and grids: 31% each; without the
+  robot: 44% (the LEGO model costs almost nothing)
+- at the panel's own pixels, no supersampling (as the app renders): 28%,
+  22% without DDAA, 14% at half resolution
+
+So the cost is pixels: the view redrawn 60 times a second whether or not
+anything moved. The app now draws only when something in view has moved,
+and leaves DDAA out from 200% scale up: idle, 20% became 0%; driving, 21%
+became 16% (at a smaller window).
+
+```
+uv run python spikes/gpu_cost.py --size 1637x1394
+```

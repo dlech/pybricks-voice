@@ -310,6 +310,18 @@ class RobotScene:
         self.trail_buffer.update_range(0, self.trail_count)
         self.trail_count = 0
 
+    def looks(self) -> np.ndarray:
+        """
+        Everything in view that moves, in one array: while it doesn't change,
+        nor does the picture.
+        """
+        parts = [self.robot.local.position, self.robot.local.rotation]
+        parts += [wheel.local.rotation for wheel in self.wheels]
+        for mesh in self.things.values():
+            parts += [mesh.local.position, mesh.local.rotation]
+        parts += [self.camera.local.position, (self.trail_count, self.zoom, self.chase)]
+        return np.concatenate([np.ravel(part) for part in parts]).astype(float)
+
     def pose(self, world: World) -> None:
         robot = world.robot
         _place(self.robot, robot.position, robot.rotation)
@@ -339,11 +351,19 @@ class RobotScene:
         self.sun.target.local.position = (x, 0, z)
 
 
+def _quality(renderer: gfx.WgpuRenderer, scale: float) -> None:
+    # The canvas has physical pixels already: no extra supersampling. And from
+    # 200% up pixels are small enough that antialiasing isn't worth its pass.
+    renderer.pixel_ratio = scale
+    renderer.ppaa = "none" if scale >= 2 else "ddaa"
+
+
 class SceneView:
     """
-    A RobotScene drawn into a SwapChainPanel that sits in a Canvas, 60 times a
-    second by a thread of its own. Each frame it calls step(dt), on that thread,
-    for the world to draw.
+    A RobotScene drawn into a SwapChainPanel that sits in a Canvas, by a
+    thread of its own. 60 times a second it calls step(dt), on that thread,
+    for the world, and draws it if anything in view has moved: a robot at
+    rest costs the GPU nothing.
 
     The first frame is drawn on the UI thread, though: that is when wgpu gives
     the panel its swap chain, with ISwapChainPanelNative::SetSwapChain, which
@@ -368,6 +388,7 @@ class SceneView:
         self._drawn = threading.Event()  # the first frame, on the UI thread
         self.on_first_frame: Callable[[], object] = lambda: None  # called on the render thread
         self.frame_gaps: list[float] = []
+        self.frames_drawn = 0
         self._reset = False
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._run, name="render", daemon=True)
@@ -408,8 +429,7 @@ class SceneView:
             canvas = SwapChainPanelCanvas(self.native)
             renderer = gfx.WgpuRenderer(canvas)
             canvas.request_draw(functools.partial(renderer.render, self.scene.scene, self.scene.camera))
-            # The canvas has physical pixels already: no extra supersampling.
-            renderer.pixel_ratio = scale
+            _quality(renderer, scale)
             canvas.resize(width, height, scale)
             self.scene.pose(self.step(0.0))
             canvas.force_draw()
@@ -434,6 +454,7 @@ class SceneView:
         assert canvas is not None and renderer is not None
         self.on_first_frame()
         size = self.size
+        drawn = None  # what the last frame drawn showed: RobotScene.looks()
         period = 1 / self.FPS
         last = next_frame = time.perf_counter()
         while not self._stop.is_set():
@@ -445,9 +466,15 @@ class SceneView:
                 self._reset = False
                 self.scene.reset()
             self.scene.pose(world)
+            looks = self.scene.looks()
             if self.size != size and (size := self.size) is not None:
-                renderer.pixel_ratio = size[2]
+                _quality(renderer, size[2])
                 canvas.resize(*size)
-            canvas.force_draw()
+                drawn = None
+            # A hundredth of a millimeter, or of a degree or so: settled.
+            if drawn is None or np.abs(looks - drawn).max() > 1e-3:
+                canvas.force_draw()
+                self.frames_drawn += 1
+                drawn = looks
             next_frame = max(next_frame + period, time.perf_counter() - period)
             self._stop.wait(max(0.0, next_frame - time.perf_counter()))

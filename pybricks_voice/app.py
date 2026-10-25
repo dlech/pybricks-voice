@@ -397,6 +397,9 @@ class App(Application, IXamlMetadataProvider):
                     gaps.max(),
                     (gaps > 50).sum(),
                 )
+        steps = len(self.view.frame_gaps)
+        if steps:
+            log.info("3D view: drew %d of %d frames, the rest unchanged", self.view.frames_drawn, steps)
         if self.latencies:
             pause, median = Segmenter.END_MS, float(np.median(self.latencies))
             log.info(
