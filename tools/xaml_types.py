@@ -8,11 +8,15 @@ that isn't in the XAML fails here rather than when the app runs.
 
 XamlReader can't take event handlers, which need compiled code-behind, but
 it skips attributes in a namespace marked mc:Ignorable. So an element can say
-py:Click="submit_typed", with the py prefix bound to PY below, and the
-generated class wires its Click event to the handler of that name on the
-object it is given. The handlers are a typing.Protocol, with the sender and
-arguments each event's delegate has in PyWinRT's stubs, so pyright checks
-that the object has them all, with the right signatures.
+py:Click="on_go", with the py prefix bound to PY below, and the generated
+class wires its Click event to the handler of that name on the object it is
+given, its code-behind. And py:Text="hud_line", naming a property rather than
+an event, binds the property one way to the code-behind's hud_line, as x:Bind
+does: the class's update() sets each bound property whose value has changed,
+as x:Bind's Bindings.Update() does. The code-behind is a typing.Protocol: its
+handlers have the sender and arguments each event's delegate has in PyWinRT's
+stubs, and its bound values the type of their property's setter, so pyright
+checks that the object has them all, of the right types.
 
 First it checks the XAML the way WinUI's compiler would, against the WinRT
 signatures the stubs have in comments: every element is a WinUI type, every
@@ -119,6 +123,36 @@ def find_event(element: Type, event: str) -> tuple[str, Type, Type]:
     raise SystemExit(f"{type_} has no {event} event")
 
 
+def find_setter(element: Type, prop: str) -> tuple[str, Type]:
+    """
+    For a property of a WinRT type, by its WinRT name as XAML uses it: its
+    Python name, and the type its setter takes ("...::put_Text(...)").
+    """
+    module, type_ = element
+    signature = re.compile(rf"^\s*# .*::put_{re.escape(prop)}\(")
+    for base in getattr(importlib.import_module(module), type_).__mro__:
+        if base.__module__ == "winrt.system" or not base.__module__.startswith("winrt."):
+            continue
+        tree, _, lines = _stub(base.__module__)
+        for node in tree.body:
+            if not (isinstance(node, ast.ClassDef) and node.name == base.__name__):
+                continue
+            for item in node.body:
+                if not isinstance(item, ast.FunctionDef):
+                    continue
+                first = min([d.lineno for d in item.decorator_list] + [item.lineno])
+                if any(signature.match(line) for line in lines[first - 2 : item.lineno - 1]):
+                    annotation = (item.args.posonlyargs + item.args.args)[1].annotation  # self, value
+                    assert annotation is not None
+                    if isinstance(annotation, ast.Name) and annotation.id in BUILTINS:
+                        return item.name, ("builtins", annotation.id)
+                    return item.name, _resolve(annotation, base.__module__)
+    raise SystemExit(f"{type_} has no settable {prop} property")
+
+
+BUILTINS = {"str", "int", "float", "bool", "bytes"}
+
+
 def _delegate(annotation: ast.expr, module: str) -> tuple[Type, Type]:
     # TypedEventHandler[Sender, Args], or an alias for Callable[[Sender, Args], object].
     if isinstance(annotation, ast.Subscript):
@@ -203,8 +237,12 @@ def problems(root: ElementTree.Element) -> list[str]:
         label = f'<{tag} Name="{element.get("Name")}">' if element.get("Name") else f"<{tag}>"
         for key in element.attrib:
             namespace, attribute = _split(key)
+            if namespace == PY:
+                if not {f"add_{attribute}", f"put_{attribute}"} & names:
+                    found.append(f"{label}: py:{attribute} is neither an event nor a settable property")
+                continue
             if namespace:
-                continue  # x:, mc: and py:, which is checked where it is wired
+                continue  # x: and mc:
             if "." in attribute:  # an attached property: Grid.Row
                 owner, _, prop = attribute.partition(".")
                 type_ = _winui(owner)
@@ -230,31 +268,44 @@ def generate(xaml: pathlib.Path) -> str:
     named: list[tuple[str, str, str]] = []  # (name, module, type)
     wiring: list[tuple[str, str, str]] = []  # (attribute, add method, handler)
     handlers: dict[str, tuple[Type, Type]] = {}  # handler: (sender, args)
+    bindings: list[tuple[str, str, str]] = []  # (attribute, Python property, source)
+    sources: dict[str, Type] = {}  # source: the setter's type
     for element in root.iter():
         name = element.get("Name") or element.get(f"{{{X}}}Name")
         if element is root:
             name = root_attribute
         elif name:
             named.append((name, *winrt_type(element.tag)))
-        for key, handler in element.attrib.items():
+        for key, target in element.attrib.items():
             if not key.startswith(f"{{{PY}}}"):
                 continue
-            event = key.removeprefix(f"{{{PY}}}")
+            member = key.removeprefix(f"{{{PY}}}")
             if not name:
-                raise SystemExit(f"{xaml.name}: an element with py:{event} needs a Name")
-            add, sender, args = find_event(winrt_type(element.tag), event)
-            if handlers.setdefault(handler, (sender, args)) != (sender, args):
-                raise SystemExit(f"{xaml.name}: {handler} handles events of different types")
-            wiring.append((name, add, handler))
+                raise SystemExit(f"{xaml.name}: an element with py:{member} needs a Name")
+            type_ = winrt_type(element.tag)
+            if f"add_{member}" in members(type_):  # an event, and its handler
+                add, sender, args = find_event(type_, member)
+                if handlers.setdefault(target, (sender, args)) != (sender, args):
+                    raise SystemExit(f"{xaml.name}: {target} handles events of different types")
+                wiring.append((name, add, target))
+            else:  # a property, and the value it is bound to
+                prop, value = find_setter(type_, member)
+                if sources.setdefault(target, value) != value:
+                    raise SystemExit(f"{xaml.name}: {target} is bound to properties of different types")
+                bindings.append((name, prop, target))
     if len({n for n, _, _ in named}) != len(named):
         raise SystemExit(f"{xaml.name}: two elements have the same name")
     imports: dict[str, set[str]] = {"winrt.microsoft.ui.xaml": {"FrameworkElement"}}
     imports.setdefault(root_module, set()).add(root_type)
     imports.setdefault("winrt.microsoft.ui.xaml.markup", set()).add("XamlReader")
+    imports.setdefault("typing_extensions", set()).add("Sentinel")  # PEP 661, not yet in typing
     for _, module, type_ in named:
         imports.setdefault(module, set()).add(type_)
     for sender, args in handlers.values():
         for module, type_ in (sender, args):
+            imports.setdefault(module, set()).add(type_)
+    for module, type_ in sources.values():
+        if module != "builtins":
             imports.setdefault(module, set()).add(type_)
     class_name = "".join(part.title() for part in xaml.stem.split("_"))
     # A Window's elements are found from its content; any other root, from itself.
@@ -262,8 +313,8 @@ def generate(xaml: pathlib.Path) -> str:
 
     lines = [
         f"# Generated by tools/xaml_types.py from {xaml.name}: don't edit. Run it again",
-        "# after renaming an element there, changing its type, or changing a handler.",
-        f'"""Typed access to {xaml.name}\'s named elements, and its events wired."""',
+        "# after renaming an element there, changing its type, or changing a py: attribute.",
+        f'"""Typed access to {xaml.name}\'s named elements, its events wired and its bindings."""',
         "",
         "from __future__ import annotations",
         "",
@@ -273,25 +324,39 @@ def generate(xaml: pathlib.Path) -> str:
         *(f"from {module} import {', '.join(sorted(names))}" for module, names in sorted(imports.items())),
         "",
         f'XAML = pathlib.Path(__file__).with_name("{xaml.name}")',
+        '_UNSET = Sentinel("_UNSET")  # a binding not yet set',
         "",
         "",
-        f"class {class_name}Handlers(typing.Protocol):",
-        f'    """The event handlers {xaml.name} names, as py:Event="handler"."""',
+        f"class {class_name}CodeBehind(typing.Protocol):",
+        f'    """What {xaml.name} names: event handlers (py:Click="on_go") and bound values (py:Text="hud_line")."""',
         "",
         *(
             f"    def {handler}(self, sender: {sender[1]}, args: {args[1]}, /) -> object: ..."
             for handler, (sender, args) in handlers.items()
         ),
+        *(f"    @property\n    def {source}(self) -> {value[1]}: ..." for source, value in sources.items()),
         "",
         "",
         f"class {class_name}:",
-        f'    """{xaml.name}, loaded, with its named elements, and its events wired to handlers."""',
+        f'    """{xaml.name}, loaded, with its named elements, its events wired and its properties bound."""',
         "",
-        f"    def __init__(self, handlers: {class_name}Handlers) -> None:",
+        f"    def __init__(self, code_behind: {class_name}CodeBehind) -> None:",
+        "        self._code_behind = code_behind",
+        "        self._shown: dict[str, object] = {}",
         f'        self.{root_attribute} = XamlReader.load(XAML.read_text(encoding="utf-8")).as_({root_type})',
         f"        find = {scope}.as_(FrameworkElement).find_name",
         *(f'        self.{name} = find("{name}").as_({type_})' for name, _, type_ in named),
-        *(f"        self.{attribute}.{add}(handlers.{handler})" for attribute, add, handler in wiring),
+        *(f"        self.{attribute}.{add}(code_behind.{handler})" for attribute, add, handler in wiring),
+        "",
+        "    def update(self) -> None:",
+        '        """Sets each bound property whose value in the code-behind has changed, as Bindings.Update()."""',
+        "        code_behind, shown = self._code_behind, self._shown",
+        *(
+            f'        if (value := code_behind.{source}) != shown.get("{attribute}.{prop}", _UNSET):\n'
+            f'            self.{attribute}.{prop} = shown["{attribute}.{prop}"] = value'
+            for attribute, prop, source in bindings
+        ),
+        *([] if bindings else ["        del code_behind, shown"]),
     ]
     formatted = subprocess.run(
         [sys.executable, "-m", "ruff", "format", "--stdin-filename", str(xaml.with_suffix(".py")), "-"],

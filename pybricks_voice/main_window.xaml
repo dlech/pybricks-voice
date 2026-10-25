@@ -20,7 +20,7 @@
             </Canvas>
             <Border Margin="12" HorizontalAlignment="Left" VerticalAlignment="Bottom" Padding="8,4"
                     Background="#88000000" CornerRadius="4">
-                <TextBlock Name="hud" Foreground="#c9d1dc" FontFamily="Consolas"/>
+                <TextBlock Name="hud" py:Text="hud_line" Foreground="#c9d1dc" FontFamily="Consolas"/>
             </Border>
             <TextBlock Margin="12,10" HorizontalAlignment="Right" VerticalAlignment="Top"
                        Foreground="#8a94a3" Text="C: camera · scroll: zoom"/>
@@ -36,7 +36,7 @@
             </Grid.RowDefinitions>
             <StackPanel Spacing="4">
                 <TextBlock Text="Talk to the robot" Style="{StaticResource SubtitleTextBlockStyle}"/>
-                <TextBlock Name="status" Opacity="0.7" TextWrapping="Wrap"/>
+                <TextBlock Name="status" py:Text="status_line" Opacity="0.7" TextWrapping="Wrap"/>
             </StackPanel>
             <!-- Controls on top, their labels under them on one line. The switch's own
                  label would sit beside it, so it has none, and only the knob's width. -->
@@ -52,15 +52,15 @@
                 <ToggleSwitch Name="listen" py:Toggled="on_listen_toggled" OnContent="" OffContent="" IsOn="True" MinWidth="0" Width="40" Height="32"
                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 <!-- The track is 1 px in WinUI's style: as thick as the bar here. -->
-                <ProgressBar Name="level" Grid.Column="1" MinHeight="10" CornerRadius="5" VerticalAlignment="Center"
+                <ProgressBar Name="level" py:Value="level_value" Grid.Column="1" MinHeight="10" CornerRadius="5" VerticalAlignment="Center"
                              Minimum="-70" Maximum="-10" Value="-70">
                     <ProgressBar.Resources>
                         <x:Double x:Key="ProgressBarTrackHeight">10</x:Double>
                     </ProgressBar.Resources>
                 </ProgressBar>
-                <TextBlock Name="listen_label" Grid.Row="1" Text="Listening" Opacity="0.6" FontSize="12"
+                <TextBlock Name="listen_label" py:Text="listen_line" Grid.Row="1" Text="Listening" Opacity="0.6" FontSize="12"
                            HorizontalAlignment="Center"/>
-                <TextBlock Name="level_text" Grid.Row="1" Grid.Column="1" Opacity="0.6" FontFamily="Consolas"
+                <TextBlock Name="level_text" py:Text="level_line" Grid.Row="1" Grid.Column="1" Opacity="0.6" FontFamily="Consolas"
                            FontSize="12" HorizontalAlignment="Center"/>
             </Grid>
             <Grid Grid.Row="2" ColumnSpacing="8">
@@ -79,7 +79,7 @@
             <ScrollViewer Name="scroller" Grid.Row="4">
                 <StackPanel Name="log" py:SizeChanged="on_log_size_changed" Spacing="8" Padding="0,0,12,0"/>
             </ScrollViewer>
-            <TextBlock Name="queue_text" Grid.Row="5" Opacity="0.7" TextWrapping="Wrap" MaxLines="3"
+            <TextBlock Name="queue_text" py:Text="queue_line" Grid.Row="5" Opacity="0.7" TextWrapping="Wrap" MaxLines="3"
                        TextTrimming="CharacterEllipsis"/>
         </Grid>
     </Grid>

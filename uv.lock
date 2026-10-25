@@ -478,7 +478,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "onnxruntime-qnn", specifier = ">=2.7" },
     { name = "pygfx", specifier = ">=0.17.0" },
-    { name = "typing-extensions" },
+    { name = "typing-extensions", specifier = ">=4.14" },
     { name = "wgpu", specifier = ">=0.32,<0.33" },
     { name = "winrt-microsoft-ui-interop" },
     { name = "winrt-microsoft-windowsappruntime-bootstrap" },

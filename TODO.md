@@ -67,10 +67,12 @@ What needs improving, here and in the projects this app is built on.
 - [ ] **Typed XAML for Python:** `tools/xaml_types.py` generates a class with a typed
       attribute for each named element of a `.xaml` file, and wires events to
       handlers named in the XAML as `py:Click="..."` in an `mc:Ignorable`
-      namespace (XamlReader rejects plain event attributes). The handlers are a
-      Protocol typed from the stubs' delegates, so pyright checks them as C#'s
-      compiler checks code-behind. It also checks every element, attribute and
-      property element against the stubs, as the compiler would. It could be a PyWinRT tool.
+      namespace (XamlReader rejects plain event attributes), and `py:Text="hud_line"`
+      binds a property one way to a value, as `x:Bind` does, set by the class's
+      `update()` when it changes. The handlers and values are a Protocol typed from
+      the stubs' delegates and setters, so pyright checks them as C#'s compiler
+      checks code-behind. It also checks every element, attribute and property
+      element against the stubs, as the compiler would. It could be a PyWinRT tool.
 - [ ] **XAML metadata from the PyWinRT generator,** for that tool to read rather than
       the stubs' signature comments or the private `_table.pywinrt`: per package, a
       small documented file (JSON, say) with each type's WinRT and Python names, its
@@ -78,6 +80,18 @@ What needs improving, here and in the projects this app is built on.
       their delegates' Python sender and arguments types already resolved, its
       `[ContentProperty]`, and enum members. Then values can be checked too
       (`Visibility="Colapsed"`), and children against content properties.
+- [ ] **Lists and item templates from Python,** so the chat could be an
+      `ItemsRepeater` with a `DataTemplate` over its messages rather than bubbles
+      built from XAML strings. Two ways:
+      - **Try first:** compiled bindings, as `x:Bind` does in a template. The
+        generator makes a Python class implementing `IDataTemplateComponent`
+        (`ProcessBindings`, `Recycle`) for each template, attached to its root with
+        `XamlBindingHelper.SetDataTemplateComponent`, and the list calls it as it
+        realizes each item. Typed, and needs nothing new from PyWinRT, which can
+        already implement WinRT interfaces in Python. Untried: check what else the
+        list asks of the component.
+      - **Otherwise:** XAML's own `{Binding}`, for which PyWinRT would have to let
+        Python objects be `ICustomPropertyProvider` and `INotifyPropertyChanged`.
 - [ ] **Keyword arguments for property setters** in generated constructors, as C#'s
       object initializers (`TextBlock(text="…", font_size=12)`), plus helpers for
       attached properties, so UI built in code is as short as XAML and typed.

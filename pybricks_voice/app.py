@@ -60,8 +60,10 @@ from .whisper import SAMPLE_RATE
 
 log = logging.getLogger(__name__)
 
-# The level meter: how quickly it follows the microphone up and down, in seconds.
+# The level meter: how quickly it follows the microphone up and down, in
+# seconds, and its range, as main_window.xaml's ProgressBar has it.
 LEVEL_RISE_S, LEVEL_FALL_S = 0.05, 0.35
+LEVEL_MIN_DB, LEVEL_MAX_DB = -70.0, -10.0
 
 
 class App(Application, IXamlMetadataProvider):
@@ -82,6 +84,14 @@ class App(Application, IXamlMetadataProvider):
         self.latencies: list[float] = []
         self.level_db = -120.0
         self.level_text_at = 0.0
+        # What main_window.xaml's py: bindings show; ui.update() each tick sets
+        # whichever has changed.
+        self.hud_line = ""
+        self.status_line = ""
+        self.listen_line = "Listening"
+        self.level_value = LEVEL_MIN_DB
+        self.level_line = ""
+        self.queue_line = "Waiting for a command"
 
     # ----- start up -----------------------------------------------------------
 
@@ -157,7 +167,7 @@ class App(Application, IXamlMetadataProvider):
         Off closes the microphone, so Windows no longer shows it in use, and
         drops whatever was half heard; on opens it again.
         """
-        self.ui.listen_label.text = "Listening" if on else "Muted"
+        self.listen_line = "Listening" if on else "Muted"
         self.listener.muted = not on
         if on:
             if self.whisper_ready.is_set():
@@ -166,8 +176,8 @@ class App(Application, IXamlMetadataProvider):
         self.microphone.stop()
         self.listener.segmenter = None
         self.level_db = -120.0
-        self.ui.level.value = self.ui.level.minimum
-        self.ui.level_text.text = ""
+        self.level_value = LEVEL_MIN_DB
+        self.level_line = ""
 
     async def feed_wavs(self) -> None:
         """
@@ -235,19 +245,17 @@ class App(Application, IXamlMetadataProvider):
         seg = self.listener.segmenter
         if seg is not None and not self.listener.muted:
             self.show_level(seg.level_db, dt, now)
-        if self.frame is None:
-            return
-        world, s, speed = self.frame
-        position = world.robot.position[:2] * 100  # cm
-        # Rounded first, then + 0.0, which turns -0.0 into 0.0: no "-0.0 cm" or "-0°".
-        x, y = (round(float(v), 1) + 0.0 for v in position)
-        hud = f"x {x:.1f} cm · y {y:.1f} cm · heading {round(world.heading)}° · {speed:.0f} cm/s"
-        if hud != self.ui.hud.text:
-            self.ui.hud.text = hud
-        pending = ([s.current] if s.current else []) + s.queued
-        if pending != self.shown_pending:  # only when it changes, not 60 times a second
-            self.shown_pending = pending
-            self.ui.queue_text.text = ("Now: " + describe(pending)) if pending else "Waiting for a command"
+        if self.frame is not None:
+            world, s, speed = self.frame
+            position = world.robot.position[:2] * 100  # cm
+            # Rounded first, then + 0.0, which turns -0.0 into 0.0: no "-0.0 cm" or "-0°".
+            x, y = (round(float(v), 1) + 0.0 for v in position)
+            self.hud_line = f"x {x:.1f} cm · y {y:.1f} cm · heading {round(world.heading)}° · {speed:.0f} cm/s"
+            pending = ([s.current] if s.current else []) + s.queued
+            if pending != self.shown_pending:  # described only when it changes, not 60 times a second
+                self.shown_pending = pending
+                self.queue_line = ("Now: " + describe(pending)) if pending else "Waiting for a command"
+        self.ui.update()
 
     def show_level(self, level_db: float, dt: float, now: float) -> None:
         """
@@ -257,14 +265,13 @@ class App(Application, IXamlMetadataProvider):
         """
         tau = LEVEL_RISE_S if level_db > self.level_db else LEVEL_FALL_S
         self.level_db += (max(level_db, -120.0) - self.level_db) * (1 - math.exp(-dt / tau))
-        value = min(max(self.level_db, self.ui.level.minimum), self.ui.level.maximum)
-        if abs(value - self.ui.level.value) >= 0.25:
-            self.ui.level.value = value
+        # In quarter decibels, which the bar can't show finer anyway.
+        self.level_value = round(min(max(self.level_db, LEVEL_MIN_DB), LEVEL_MAX_DB) * 4) / 4
         # The number only a few times a second: digits changing 60 times a
         # second are unreadable.
         if now - self.level_text_at >= 0.25:
             self.level_text_at = now
-            self.ui.level_text.text = f"{round(self.level_db)} dBFS"
+            self.level_line = f"{round(self.level_db)} dBFS"
 
     # ----- events -------------------------------------------------------------
 
@@ -376,7 +383,7 @@ class App(Application, IXamlMetadataProvider):
         self.shutdown()
 
     def set_status(self, text: str) -> None:
-        self.ui.status.text = text
+        self.status_line = text
 
     def shutdown(self) -> None:
         """Stops everything; the app exits once main() has finished."""

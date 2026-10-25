@@ -44,6 +44,12 @@ class TestProblems(unittest.TestCase):
     def test_event_attribute(self) -> None:
         self.assertIn("use py:Click", self.problems('<Button Name="go" Click="on_go"/>')[0])
 
+    def test_py_attributes(self) -> None:
+        body = '<TextBlock xmlns:py="https://pybricks.com/pybricks-voice/xaml" Name="a" py:Txt="line" py:Text="line"/>'
+        self.assertEqual(
+            self.problems(body), ['<TextBlock Name="a">: py:Txt is neither an event nor a settable property']
+        )
+
     def test_read_only(self) -> None:
         self.assertEqual(self.problems('<TextBox ActualWidth="3"/>'), ["<TextBox>: ActualWidth is read-only"])
 
