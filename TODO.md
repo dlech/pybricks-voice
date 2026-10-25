@@ -51,8 +51,9 @@ What needs improving, here and in the projects this app is built on.
 - [ ] **The guest asyncio loop** (`pybricks_voice/loop.py`) in `winrt-runtime`, with its
       tests.
 - [ ] **A WinUI startup helper** for unpackaged apps: DPI awareness (`python.exe`'s
-      manifest declares none), AppUserModelID, apartment and bootstrap, and the
-      `IXamlMetadataProvider` boilerplate.
+      manifest declares none), AppUserModelID, apartment and bootstrap, the
+      `IXamlMetadataProvider` boilerplate, and remembering the window's placement
+      (`pybricks_voice/placement.py`), which WinUI 3 doesn't do as UWP did.
 - [ ] **The guest loop's timer is coarse:** its `DispatcherQueueTimer` fires on the
       system's ~15.6 ms tick, so a 16 ms `asyncio.sleep` often takes 31 or 47 ms
       (see `spikes/drag_stall.py`). The iocp-handoff thread could wait with a
@@ -86,6 +87,16 @@ What needs improving, here and in the projects this app is built on.
       their Protocol). The generated class sets them in the repeater's
       `ElementPrepared`, so neither `IDataTemplateComponent` nor `{Binding}` was
       needed. Its `ItemsSource` is `pybricks_voice/observable_list.py`.
+- [ ] **Events in a DataTemplate,** a button on a bubble say: the generator rejects
+      them. The `_prepare_` method could wire them to a code-behind handler that
+      also gets the item, and must not wire one twice as the repeater recycles
+      elements.
+- [ ] **Bindings that update themselves:** the code-behind calls `update()` each
+      tick, as x:Bind's `Bindings.Update()`. For x:Bind's `Mode=OneWay`, Python
+      objects would implement `INotifyPropertyChanged` (non-generic, like the
+      `INotifyCollectionChanged` Python implements) and the generated class
+      would listen; for XAML's own `{Binding}`, PyWinRT would also have to let
+      Python objects be `ICustomPropertyProvider`.
 - [ ] **An observable list,** `ObservableList` as in `pybricks_voice/observable_list.py`:
       a Python list that implements WinUI's non-generic `IBindableVector` and
       `INotifyCollectionChanged`, as C#'s `ObservableCollection` does. PyWinRT can't
