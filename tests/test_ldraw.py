@@ -3,7 +3,7 @@ import unittest
 
 import numpy as np
 
-from pybricks_voice.ldraw import LDU, MAIN_COLOR, Library
+from pybricks_voice.ldraw import LDU, MAIN_COLOR, Library, normals
 
 MODELS = pathlib.Path(__file__).resolve().parent.parent / "pybricks_voice" / "models"
 
@@ -31,6 +31,26 @@ class TestLibrary(unittest.TestCase):
 
     def test_names_are_case_and_slash_blind(self) -> None:
         self.assertEqual(len(self.library.triangles("S\\39367S01.DAT")), len(self.library.triangles("s/39367s01.dat")))
+
+    def test_triangles_face_outwards(self) -> None:
+        # By the divergence theorem, sum(centroid . normal * area) is 3 x the
+        # volume: positive only if the normals point out.
+        for part in ("32278.dat", "39367p01.dat", "45601c01.dat"):
+            tris = np.concatenate(list(self.library.triangles(part).values()))
+            faces = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
+            self.assertGreater((tris.mean(axis=1) * faces).sum(), 0, part)
+
+
+class TestNormals(unittest.TestCase):
+    def test_curves_are_smooth_and_edges_sharp(self) -> None:
+        # Two faces meeting at 20 degrees, then a third at 90.
+        tilt = np.radians(20)
+        gentle = np.array([[[0, 0, 0], [1, 0, 0], [0, 1, 0]], [[0, 0, 0], [0, 1, 0], [-np.cos(tilt), 0, np.sin(tilt)]]])
+        n = normals(gentle)
+        self.assertTrue(np.allclose(n[0, 0], n[1, 0]))  # shared corner: one normal
+        sharp = np.array([[[0, 0, 0], [1, 0, 0], [0, 1, 0]], [[0, 0, 0], [0, 0, 1], [1, 0, 0]]])
+        n = normals(sharp)
+        self.assertTrue(np.allclose(n[0, 0], (0, 0, 1)) and np.allclose(n[1, 0], (0, 1, 0)))
 
 
 class TestDrivingBase(unittest.TestCase):

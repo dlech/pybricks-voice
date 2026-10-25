@@ -181,12 +181,10 @@ def _ldraw_group(library: ldraw.Library, name: str, color: int = ldraw.MAIN_COLO
     for code, tris in library.triangles(name, color).items():
         if matrix is not None:
             tris = tris @ np.reshape(matrix, (3, 3)).T
-        points = tris * _LDRAW_TO_SCENE
-        normals = np.cross(points[:, 1] - points[:, 0], points[:, 2] - points[:, 0])
-        normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-9)
+        points = tris * _LDRAW_TO_SCENE  # a rotation: the winding stays counterclockwise
         geometry = gfx.Geometry(
             positions=points.reshape(-1, 3).astype(np.float32),
-            normals=np.repeat(normals, 3, axis=0).astype(np.float32),
+            normals=ldraw.normals(points).reshape(-1, 3).astype(np.float32),
             indices=np.arange(3 * len(points), dtype=np.int32).reshape(-1, 3),
         )
         c = library.color(code)

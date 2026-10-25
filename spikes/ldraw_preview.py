@@ -17,7 +17,7 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from rendercanvas.offscreen import RenderCanvas
 
-from pybricks_voice.ldraw import LDU, Library
+from pybricks_voice.ldraw import LDU, Library, normals
 from pybricks_voice.scene import gfx, use_d3d12  # pygfx, once scene.py has found its FreeType DLL
 
 PARTS = [  # file, color, where it goes (cm, scene frame)
@@ -37,14 +37,11 @@ def mesh(library: Library, name: str, color: int, matrix=None, at=(0, 0, 0)) -> 
     for code, tris in library.triangles(name, color).items():
         if matrix is not None:
             tris = tris @ np.array(matrix, float).reshape(3, 3).T + at
-        points = tris.reshape(-1, 3) * (LDU * 100) * (-1, -1, 1)  # a half turn about z: y up, LDraw -z forward
-        edges = tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0]
-        normals = np.cross(*edges) * (-1, -1, 1)
-        normals /= np.maximum(np.linalg.norm(normals, axis=1, keepdims=True), 1e-9)
+        points = tris * (LDU * 100) * (-1, -1, 1)  # a half turn about z: y up, LDraw -z forward
         geometry = gfx.Geometry(
-            positions=points.astype(np.float32),
-            normals=np.repeat(normals, 3, axis=0).astype(np.float32),
-            indices=np.arange(len(points), dtype=np.int32).reshape(-1, 3),
+            positions=points.reshape(-1, 3).astype(np.float32),
+            normals=normals(points).reshape(-1, 3).astype(np.float32),
+            indices=np.arange(3 * len(points), dtype=np.int32).reshape(-1, 3),
         )
         c = library.color(code)
         name_ = c.name.lower()
@@ -81,7 +78,7 @@ VIEWS = {  # camera position and target, cm, scene frame
     "front-left": ((-20, 14, -22), (0, 4, 2)),
     "side": ((-34, 5, 3), (0, 4, 3)),
     "back-right": ((20, 16, 30), (0, 4, 3)),
-    "top": ((0, 40, 3.01), (0, 0, 3)),
+    "wheel": ((-14, 5, -5), (-5.6, 2.8, 0)),
 }
 
 
