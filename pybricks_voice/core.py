@@ -147,11 +147,17 @@ class Core(abc.ABC):
 
     async def speech(self) -> None:
         self.set_status(f"loading Whisper {self.WHISPER_ON}…")
-        load_s = await self.listener.start()
-        self.whisper_ready.set()
-        self.set_status(f"Whisper loaded in {load_s:.1f} s")
-        if self.listening:
-            await self.open_microphone()
+        try:
+            load_s = await self.listener.start()
+        except Exception as e:
+            # Typed commands still work.
+            log.warning("no Whisper: %s", e)
+            self.set_status(f"no Whisper: {e}")
+        else:
+            self.whisper_ready.set()
+            self.set_status(f"Whisper loaded in {load_s:.1f} s")
+            if self.listening:
+                await self.open_microphone()
         async for heard in self.listener.heard():
             self.on_heard(heard)
 

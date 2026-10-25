@@ -48,6 +48,14 @@ Say things like "go forward 30 centimeters", "turn left", "turn around",
 them with "then". You can also type commands into the box. In the 3D view, C
 switches between the chase camera and the top view, and the scroll wheel zooms.
 
+## macOS
+
+On a Mac, the same app runs in an AppKit window through
+[rubicon-objc](https://github.com/beeware/rubicon-objc), with pygfx drawing
+into a `CAMetalLayer`. Whisper and the microphone aren't there yet, so
+commands are typed. `uv sync` is all the setup; `--screenshot` needs the
+Screen Recording permission for the terminal it runs from.
+
 ## Check
 
 ```
@@ -75,6 +83,8 @@ uv run tools/check_whisper.py      # Windows speech synthesis -> Whisper on the 
 | `pybricks_voice/windows/whisper_qnn.py` | Whisper-Small on the NPU |
 | `pybricks_voice/windows/microphone.py` | the microphone, through AudioGraph |
 | `pybricks_voice/windows/loop.py` | asyncio as a guest of the UI thread's `DispatcherQueue` |
+| `pybricks_voice/macos/app.py` | the AppKit app, its window built in code |
+| `pybricks_voice/macos/scene_view.py` | the 3D view in a `CAMetalLayer`, drawn by a thread of its own |
 | `pybricks_voice/macos/loop.py` | asyncio as a guest of the main thread's `CFRunLoop` |
 | `pybricks_voice/macos/corefoundation.py` | the CoreFoundation calls that needs, declared with ctypes |
 | `tools/get_freetype.py` | builds `vendor/freetype.dll` for pygfx |

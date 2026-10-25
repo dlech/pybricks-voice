@@ -1,16 +1,22 @@
 """
 The 3D view's scene, drawn with pygfx: the table, the things on it, and the
 robot with its trail, seen by a camera that follows it or looks down from
-above. Getting it onto the screen is each platform's: see windows/scene_view.py.
+above, and the thread that steps and draws it. Getting it onto the screen
+is each platform's: see windows/scene_view.py and macos/scene_view.py.
 
 One unit is 1 cm, y up, forward is -z, as in three.js.
 """
 
 from __future__ import annotations
 
+import functools
+import logging
 import math
 import os
 import pathlib
+import threading
+import time
+from collections.abc import Callable
 
 import numpy as np
 
@@ -28,9 +34,12 @@ except RuntimeError as e:
 
 
 import pylinalg as la  # noqa: E402
+from rendercanvas.base import BaseCanvasGroup, BaseRenderCanvas  # noqa: E402
 
 from . import ldraw  # noqa: E402
 from .physics import THINGS, World  # noqa: E402
+
+log = logging.getLogger(__name__)
 
 # ----- the scene -------------------------------------------------------------------
 
@@ -224,3 +233,155 @@ def set_quality(renderer: gfx.WgpuRenderer, scale: float) -> None:
     # 200% up pixels are small enough that antialiasing isn't worth its pass.
     renderer.pixel_ratio = scale
     renderer.ppaa = "none" if scale >= 2 else "ddaa"
+
+
+# ----- drawing it ------------------------------------------------------------------
+
+
+class _Group(BaseCanvasGroup):
+    pass
+
+
+class ExternalCanvas(BaseRenderCanvas):
+    """
+    A rendercanvas for a surface the app's own window owns. It has no loop of
+    its own: the app draws with force_draw() when it wants a frame.
+    """
+
+    _rc_canvas_group = _Group(None)  # pyright: ignore[reportArgumentType]  (no loop: the app draws)
+
+    def __init__(self) -> None:
+        self._closed = False
+        super().__init__(size=(1, 1))
+        self._final_canvas_init()
+
+    def resize(self, width: float, height: float, scale: float) -> None:
+        """The size of the view in points (DIPs), and how many pixels there are to one."""
+        self._size_info.set_physical_size(max(1, round(width * scale)), max(1, round(height * scale)), scale)
+
+    def present_info(self) -> dict:
+        """What wgpu's get_surface_id_from_info() gets: the platform's surface."""
+        raise NotImplementedError
+
+    def _rc_get_present_info(self, present_methods):
+        return self.present_info() if "screen" in present_methods else None
+
+    def _rc_force_paint(self):
+        self._time_to_paint()
+
+    def _rc_close(self):
+        self._closed = True
+
+    def _rc_get_closed(self):
+        return self._closed
+
+    # Nothing to do for the rest: the app owns the window, the loop and the size.
+    def _rc_gui_poll(self):
+        pass
+
+    def _rc_request_draw(self):
+        pass
+
+    def _rc_request_paint(self):
+        pass
+
+    def _rc_set_logical_size(self, width, height):
+        pass
+
+    def _rc_set_title(self, title):
+        pass
+
+    def _rc_set_cursor(self, cursor):
+        pass
+
+
+class RenderThread:
+    """
+    A RobotScene drawn by a thread of its own. 60 times a second it calls
+    step(dt), on that thread, for the world, and draws it if anything in view
+    has moved: a robot at rest costs the GPU nothing. The platform's view
+    makes the canvas, sets size as the view is laid out, and calls
+    first_frame() on whichever thread its surface needs.
+    """
+
+    FPS = 60
+
+    def __init__(self, step: Callable[[float], World]) -> None:
+        self.step = step
+        self.scene = RobotScene()
+        self.size: tuple[float, float, float] | None = None  # the latest layout: width, height, scale
+        self.canvas: ExternalCanvas | None = None
+        self.renderer: gfx.WgpuRenderer | None = None
+        self._drawn = threading.Event()  # the first frame
+        self.on_first_frame: Callable[[], object] = lambda: None  # called on the render thread
+        self.frame_gaps: list[float] = []
+        self.frames_drawn = 0
+        self._reset = False
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name="render", daemon=True)
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def close(self) -> None:
+        self._stop.set()
+        self._thread.join(timeout=2)
+
+    def reset(self) -> None:
+        """Clears the trail, on the render thread's next frame."""
+        self._reset = True
+
+    def first_frame(self, canvas: ExternalCanvas) -> None:
+        """Draws the first frame into canvas, at self.size, and lets the thread go on."""
+        assert self.size is not None, "lay the view out first"
+        renderer = gfx.WgpuRenderer(canvas)
+        canvas.request_draw(functools.partial(renderer.render, self.scene.scene, self.scene.camera))
+        set_quality(renderer, self.size[2])
+        canvas.resize(*self.size)
+        self.scene.pose(self.step(0.0))
+        canvas.force_draw()
+        self.canvas, self.renderer = canvas, renderer
+        self._drawn.set()
+
+    def _run(self) -> None:
+        try:
+            self._frames()
+        except Exception:
+            log.exception("the 3D view stopped")
+
+    def _frames(self) -> None:
+        """
+        Steps and draws on the clock: a late frame makes the next one sooner
+        rather than pushing them all back.
+        """
+        while not self._drawn.wait(0.1):
+            if self._stop.is_set():
+                return
+        canvas, renderer = self.canvas, self.renderer
+        assert canvas is not None and renderer is not None
+        self.on_first_frame()
+        size = self.size
+        drawn = None  # what the last frame drawn showed: RobotScene.looks()
+        period = 1 / self.FPS
+        last = next_frame = time.perf_counter()
+        while not self._stop.is_set():
+            now = time.perf_counter()
+            self.frame_gaps.append(now - last)
+            dt, last = min(now - last, 0.1), now
+            world = self.step(dt)
+            if self._reset:
+                self._reset = False
+                self.scene.reset()
+            self.scene.pose(world)
+            looks = self.scene.looks()
+            if self.size != size and (size := self.size) is not None:
+                set_quality(renderer, size[2])
+                canvas.resize(*size)
+                drawn = None
+            # A hundredth of a millimeter, or of a degree or so: settled.
+            if drawn is None or np.abs(looks - drawn).max() > 1e-3:
+                canvas.force_draw()
+                self.frames_drawn += 1
+                drawn = looks
+            next_frame = max(next_frame + period, time.perf_counter() - period)
+            self._stop.wait(max(0.0, next_frame - time.perf_counter()))
