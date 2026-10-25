@@ -39,6 +39,15 @@ What needs improving, here and in the projects this app is built on.
 - [x] **`create_direct3d11_device()`** in `winrt-Windows.Graphics.DirectX.Direct3D11.Interop`
       4.1.0 ([pywinrt#159](https://github.com/pywinrt/pywinrt/pull/159), asked for in
       [pywinrt#78](https://github.com/pywinrt/pywinrt/issues/78)).
+- [ ] **A pointer from an `InterfaceCapsule`:** `winrt.runtime.interop` makes and wraps
+      capsules but can't read one, so `scene.py` uses ctypes' `PyCapsule_GetPointer`
+      to hand `ISwapChainPanelNative` to wgpu. Something like
+      `interface_pointer(capsule) -> int`, for any native library (wgpu, Skia, ctypes).
+- [ ] **`winrt-Microsoft.UI.Xaml.Media.DXInterop`,** like the Direct3D11 interop: what
+      `microsoft.ui.xaml.media.dxinterop.h` declares, `ISwapChainPanelNative`
+      (`set_swap_chain`, which works only on the UI thread) and the
+      `ISurfaceImageSourceNative` family, with their IIDs, which `scene.py` copies
+      from the header by hand. For apps that bring their own Direct3D.
 - [ ] **The guest asyncio loop** (`pybricks_voice/loop.py`) in `winrt-runtime`, with its
       tests.
 - [ ] **A WinUI startup helper** for unpackaged apps: DPI awareness (`python.exe`'s
