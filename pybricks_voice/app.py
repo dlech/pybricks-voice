@@ -102,15 +102,32 @@ XAML = """
                 <TextBlock Text="Talk to the robot" Style="{StaticResource SubtitleTextBlockStyle}"/>
                 <TextBlock Name="status" Opacity="0.7" TextWrapping="Wrap"/>
             </StackPanel>
-            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
-                <ToggleSwitch Name="listen" OnContent="Listening" OffContent="Muted" IsOn="True"/>
-                <ProgressBar Name="level" Width="110" VerticalAlignment="Center"
-                             Minimum="-70" Maximum="-10" Value="-70"/>
-                <TextBlock Name="level_db" Width="52" VerticalAlignment="Center" Opacity="0.6"
-                           FontFamily="Consolas" TextAlignment="Right"/>
-                <Ellipse Name="speaking" Width="10" Height="10" VerticalAlignment="Center" Opacity="0"
-                         Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
-            </StackPanel>
+            <!-- Controls on top, their labels under them on one line. The switch's own
+                 label would sit beside it, so it has none, and only the knob's width. -->
+            <Grid Grid.Row="1" ColumnSpacing="16">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <ToggleSwitch Name="listen" OnContent="" OffContent="" IsOn="True" MinWidth="0" Width="40" Height="32"
+                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                <!-- The track is 1 px in WinUI's style: as thick as the bar here. -->
+                <ProgressBar Name="level" Grid.Column="1" MinHeight="10" CornerRadius="5" VerticalAlignment="Center"
+                             Minimum="-70" Maximum="-10" Value="-70"
+                             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+                    <ProgressBar.Resources>
+                        <x:Double x:Key="ProgressBarTrackHeight">10</x:Double>
+                    </ProgressBar.Resources>
+                </ProgressBar>
+                <TextBlock Name="listen_label" Grid.Row="1" Text="Listening" Opacity="0.6" FontSize="12"
+                           HorizontalAlignment="Center"/>
+                <TextBlock Name="level_db" Grid.Row="1" Grid.Column="1" Opacity="0.6" FontFamily="Consolas"
+                           FontSize="12" HorizontalAlignment="Center"/>
+            </Grid>
             <Grid Grid.Row="2" ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*"/>
@@ -169,8 +186,8 @@ class App(Application, IXamlMetadataProvider):
         self.status = find("status").as_(TextBlock)
         self.level = find("level").as_(ProgressBar)
         self.level_text = find("level_db").as_(TextBlock)
-        self.speaking = find("speaking").as_(UIElement)
         self.listen = find("listen").as_(ToggleSwitch)
+        self.listen_label = find("listen_label").as_(TextBlock)
         self.typed = find("typed").as_(TextBox)
         self.log = find("log").as_(StackPanel)
         self.scroller = find("scroller").as_(ScrollViewer)
@@ -248,6 +265,7 @@ class App(Application, IXamlMetadataProvider):
     def set_listening(self, on: bool) -> None:
         """Off closes the microphone, so Windows no longer shows it in use, and
         drops whatever was half heard; on opens it again."""
+        self.listen_label.text = "Listening" if on else "Muted"
         self.listener.muted = not on
         if on:
             if self.whisper_ready.is_set():
@@ -258,7 +276,6 @@ class App(Application, IXamlMetadataProvider):
         self.level_db = -120.0
         self.level.value = self.level.minimum
         self.level_text.text = ""
-        self.speaking.opacity = 0.0
 
     async def feed_wavs(self) -> None:
         """--feed-wav: plays files into the listener at real-time pace, with room
@@ -319,7 +336,7 @@ class App(Application, IXamlMetadataProvider):
         dt, self.last_tick = min(now - self.last_tick, 0.1), now
         seg = self.listener.segmenter
         if seg is not None and not self.listener.muted:
-            self.show_level(seg.level_db, seg.speaking, dt, now)
+            self.show_level(seg.level_db, dt, now)
         if self.frame is None:
             return
         world, s, speed = self.frame
@@ -334,7 +351,7 @@ class App(Application, IXamlMetadataProvider):
             self.shown_pending = pending
             self.queue_text.text = ("Now: " + describe(pending)) if pending else "Waiting for a command"
 
-    def show_level(self, level_db: float, speaking: bool, dt: float, now: float) -> None:
+    def show_level(self, level_db: float, dt: float, now: float) -> None:
         """The microphone level, smoothed like a VU meter: it follows each 30 ms
         frame quickly on the way up and slowly on the way down, so room noise and
         the gaps between syllables don't make it flicker."""
@@ -347,10 +364,7 @@ class App(Application, IXamlMetadataProvider):
         # second are unreadable.
         if now - self.level_text_at >= 0.25:
             self.level_text_at = now
-            self.level_text.text = f"{round(self.level_db)} dB"
-        opacity = 1.0 if speaking else 0.0
-        if self.speaking.opacity != opacity:
-            self.speaking.opacity = opacity
+            self.level_text.text = f"{round(self.level_db)} dBFS"
 
     # ----- events -------------------------------------------------------------
 
