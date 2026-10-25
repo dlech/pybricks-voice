@@ -2,19 +2,16 @@
 
 It captures what is on screen for the window, the SwapChainPanel's 3D view
 included (XAML's RenderTargetBitmap leaves that out), whatever is in front of
-it. Graphics.Capture needs a Direct3D device, which no WinRT API creates, so
-that one step is D3D11CreateDevice through ctypes, handed to PyWinRT's
-Direct3D 11 interop.
+it. Graphics.Capture needs a Direct3D device, which no WinRT API creates;
+PyWinRT's Direct3D 11 interop makes one.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
-import ctypes
 import logging
 import pathlib
-import uuid
 
 from winrt.microsoft.ui.interop import get_window_from_window_id
 from winrt.microsoft.ui.xaml import Window
@@ -25,42 +22,12 @@ from winrt.windows.graphics.capture import (
 )
 from winrt.windows.graphics.capture.interop import create_for_window
 from winrt.windows.graphics.directx import DirectXPixelFormat
-from winrt.windows.graphics.directx.direct3d11 import IDirect3DDevice
-from winrt.windows.graphics.directx.direct3d11.interop import create_direct3d11_device_from_dxgi_device
+from winrt.windows.graphics.directx.direct3d11.interop import create_direct3d11_device
 from winrt.windows.graphics.imaging import BitmapAlphaMode, BitmapEncoder, BitmapPixelFormat, SoftwareBitmap
 from winrt.windows.security.authorization.appcapabilityaccess import AppCapabilityAccessStatus
 from winrt.windows.storage.streams import DataReader, InMemoryRandomAccessStream
 
 log = logging.getLogger(__name__)
-
-_IID_IDXGIDEVICE = uuid.UUID("54ec77fa-1377-44e6-8c32-88fd5f44c84c")
-
-
-def _direct3d_device() -> IDirect3DDevice:
-    """A hardware D3D11 device, as the IDirect3DDevice Graphics.Capture takes."""
-    device = ctypes.c_void_p()
-    hardware, bgra_support, sdk_version = 1, 0x20, 7  # D3D_DRIVER_TYPE_HARDWARE, ..._BGRA_SUPPORT, D3D11_SDK_VERSION
-    hr = ctypes.windll.d3d11.D3D11CreateDevice(
-        None, hardware, None, bgra_support, None, 0, sdk_version, ctypes.byref(device), None, None
-    )
-    if hr != 0:
-        raise OSError(hr, "D3D11CreateDevice failed")
-
-    def method(obj: ctypes.c_void_p, index: int, *argtypes):
-        vtable = ctypes.cast(obj, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
-        return ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, *argtypes)(vtable[index])
-
-    # IUnknown::QueryInterface (0) for IDXGIDevice, then Release (2) both.
-    iid = (ctypes.c_byte * 16).from_buffer_copy(_IID_IDXGIDEVICE.bytes_le)
-    dxgi = ctypes.c_void_p()
-    hr = method(device, 0, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p))(device, iid, ctypes.byref(dxgi))
-    method(device, 2)(device)
-    if hr != 0 or dxgi.value is None:
-        raise OSError(hr, "IDXGIDevice not supported")
-    try:
-        return create_direct3d11_device_from_dxgi_device(dxgi.value)
-    finally:
-        method(dxgi, 2)(dxgi)
 
 
 async def _capture(window: Window, timeout: float) -> SoftwareBitmap:
@@ -76,7 +43,7 @@ async def _capture(window: Window, timeout: float) -> SoftwareBitmap:
     # Undone in reverse, whatever happens: the handler, the session, the pool,
     # the device.
     with contextlib.ExitStack() as stack:
-        device = stack.enter_context(_direct3d_device())
+        device = stack.enter_context(create_direct3d11_device())
         pool = stack.enter_context(
             Direct3D11CaptureFramePool.create_free_threaded(
                 device, DirectXPixelFormat.B8_G8_R8_A8_UINT_NORMALIZED, 1, item.size

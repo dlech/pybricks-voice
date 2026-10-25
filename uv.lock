@@ -492,7 +492,7 @@ requires-dist = [
     { name = "winrt-windows-graphics-capture-interop" },
     { name = "winrt-windows-graphics-directx" },
     { name = "winrt-windows-graphics-directx-direct3d11" },
-    { name = "winrt-windows-graphics-directx-direct3d11-interop" },
+    { name = "winrt-windows-graphics-directx-direct3d11-interop", specifier = ">=4.1.0" },
     { name = "winrt-windows-graphics-imaging" },
     { name = "winrt-windows-media" },
     { name = "winrt-windows-media-audio" },
@@ -1008,26 +1008,26 @@ wheels = [
 
 [[package]]
 name = "winrt-windows-graphics-directx-direct3d11-interop"
-version = "4.0.0"
+version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "winrt-runtime" },
     { name = "winrt-windows-graphics-directx-direct3d11" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2a/3f/1b91723ee414801f3dff3de08bb2a75dad70d8c0e98d290960012958aa17/winrt_windows_graphics_directx_direct3d11_interop-4.0.0.tar.gz", hash = "sha256:44dec6a0a82a3f5e241185216a7c1a603bef3e461d7c7b9f3f61a61c9fd3ac11", size = 8082, upload-time = "2026-10-24T01:58:59.463Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c5/84/49d39eaf7e5bd60776620327fa40eb043cf4884803577e68c9351f843924/winrt_windows_graphics_directx_direct3d11_interop-4.1.0.tar.gz", hash = "sha256:925fdd44f7d01e18eccc44e99a932a40d454753428387aab1ad934fb500055a2", size = 9851, upload-time = "2026-10-25T04:30:35.145Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/40/01/ed60adde300c5c558639216ddc0a7b8e5c2edfebcd76f80a14778736d8e2/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp312-cp312-win32.whl", hash = "sha256:74ac06f20e8086aa0fe3ac4777ff8f830128598cf7240ba2cb056c6826bc61dc", size = 9867, upload-time = "2026-10-24T01:58:46.11Z" },
-    { url = "https://files.pythonhosted.org/packages/ec/1c/b2a431f6fb1b86d4316075942114550f6cb562654af4cc9b4acb6c77a54d/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp312-cp312-win_amd64.whl", hash = "sha256:d769bf4e8a54eee39c7e22e2e2ccd863eb3d5cc359f1f425a196f18ff940322b", size = 9959, upload-time = "2026-10-24T01:58:46.958Z" },
-    { url = "https://files.pythonhosted.org/packages/fb/38/6419cc6341c6fb4412f44530fe9af7f6eb59e23b7cb50cdd234e3008a12f/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp312-cp312-win_arm64.whl", hash = "sha256:a08d7eed07e9c71fe9be7d66459d21eb449f9404d4df65a994e9663203842d33", size = 10001, upload-time = "2026-10-24T01:58:47.744Z" },
-    { url = "https://files.pythonhosted.org/packages/00/fd/3c82d7da003c197ae401b3b3a1756679c88d6fc79f88c14621e998c0a8da/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp313-cp313-win32.whl", hash = "sha256:be4fada46bb16aafbab8874b5df04dc39a2712121d4cd8688680b727adf7ce13", size = 9872, upload-time = "2026-10-24T01:58:48.397Z" },
-    { url = "https://files.pythonhosted.org/packages/f1/c0/b96e641d5a6af44c43326d9d2db5c059209066c9231ce1fa3333c245f8ca/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp313-cp313-win_amd64.whl", hash = "sha256:96ede8d7bba938082461cf0e68e8093a9f5770f0b4187a3aa8ce1487ca333996", size = 9972, upload-time = "2026-10-24T01:58:49.214Z" },
-    { url = "https://files.pythonhosted.org/packages/44/9f/49e97f34380fdd2b83c43854a75befee108d6088c66235e6070ba08d912a/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp313-cp313-win_arm64.whl", hash = "sha256:e227e4a1d72560fbc40624b52fa246bbd2173f65675cb08ae66f849252d5edf3", size = 10011, upload-time = "2026-10-24T01:58:49.848Z" },
-    { url = "https://files.pythonhosted.org/packages/66/5d/3e48c010f22fa8aaf814aa6efe2776fa69989325ebadbb5302b9d4404e1a/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp314-cp314-win32.whl", hash = "sha256:7cf450a4e414efcf902c8e836372a5ae47f3f2ec4c37fc1d513e0488d5c0d5bf", size = 9999, upload-time = "2026-10-24T01:58:50.733Z" },
-    { url = "https://files.pythonhosted.org/packages/45/24/c867ea7428b28971b6a9f17808ff3cb709f53e96246782ef3899b038cec7/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp314-cp314-win_amd64.whl", hash = "sha256:8403aceabb0cd4e0791f48dafd0cd646ea0ea26557ace19cb0324ea0d61959b3", size = 10126, upload-time = "2026-10-24T01:58:51.41Z" },
-    { url = "https://files.pythonhosted.org/packages/41/ce/059fd92e41f572001716cc6931782645b5ce80258220220f2315ebf39023/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp314-cp314-win_arm64.whl", hash = "sha256:98bf258c2fdf67112ef23319b7f62176636434449a79e00df042ff5d24f40533", size = 10150, upload-time = "2026-10-24T01:58:52.311Z" },
-    { url = "https://files.pythonhosted.org/packages/3f/b3/34d2c0862646c5c040b735aa5b7102217b2c95e4baaf1f06c0e5589ab15d/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp314-cp314t-win32.whl", hash = "sha256:06b842fdd5cf823c5702d564be26c2e21b15216b77407769277b40160a7046b8", size = 10137, upload-time = "2026-10-24T01:58:52.931Z" },
-    { url = "https://files.pythonhosted.org/packages/0e/6b/b66193efc836bdea10c1a323da40d57fb7a702ead54873221d9ccaccf27b/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp314-cp314t-win_amd64.whl", hash = "sha256:2f8b767738c242a0ae8ddf48fb4fef5135dc9916fc71bac68c1c4a642ab93755", size = 10269, upload-time = "2026-10-24T01:58:53.595Z" },
-    { url = "https://files.pythonhosted.org/packages/24/56/8b1f26a2b4396b9dc495172d7b0fb926d1df30e7e78dc7c9d88a2510f4ba/winrt_windows_graphics_directx_direct3d11_interop-4.0.0-cp314-cp314t-win_arm64.whl", hash = "sha256:97c9d24d2a5692199f734e4d03134f91bbd88a50391dfce1d7e0f7a51b8bc457", size = 10303, upload-time = "2026-10-24T01:58:54.448Z" },
+    { url = "https://files.pythonhosted.org/packages/88/42/d48c4b8bea1340103892eab591cbea74e05f6930849945dfa1cea7aaf695/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp312-cp312-win32.whl", hash = "sha256:62e6918b4b3dbee0ff81ceb20457e8d73bda09b02b25451209afc70fdd2189bd", size = 11098, upload-time = "2026-10-25T04:30:18.743Z" },
+    { url = "https://files.pythonhosted.org/packages/74/60/33c983f2ef0c3d3fe497199ef690fa25ffceab9e9ddf06ea37094a8c76f5/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp312-cp312-win_amd64.whl", hash = "sha256:763c7eaa9a42f15158a30fdaadbb2ca2dc2afe78f66c16c68686b1b2465fe4d8", size = 11262, upload-time = "2026-10-25T04:30:19.702Z" },
+    { url = "https://files.pythonhosted.org/packages/d6/5e/bb6db8db3046d9356a49f7bb5663ae691fd779a98c5fadca6e5dd4068b96/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp312-cp312-win_arm64.whl", hash = "sha256:3259a7451806e4b09da9a1671add099d09db4e6b43913e72ce976a9560c18853", size = 11254, upload-time = "2026-10-25T04:30:20.414Z" },
+    { url = "https://files.pythonhosted.org/packages/e8/de/d6f293ce3865750bb2692ee24a7a784da286643ba8a3b48acafc919039e9/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp313-cp313-win32.whl", hash = "sha256:85b1c5f45093a1200854c76d04796eeddf9db50fe07348599bd0ed3777beaa02", size = 11105, upload-time = "2026-10-25T04:30:21.377Z" },
+    { url = "https://files.pythonhosted.org/packages/d8/48/f4e8068b3e5631d19afd8a348406bce12d6b49c9da5608de4c67b219fb45/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp313-cp313-win_amd64.whl", hash = "sha256:565d20518e358d28e958fa18ba6efb43ad0747168097784f64c72338d2a614df", size = 11270, upload-time = "2026-10-25T04:30:22.339Z" },
+    { url = "https://files.pythonhosted.org/packages/80/46/25f2ae00f0e803f093ecab0a10c438cb816a3a15bfe2286e5706c76e2726/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp313-cp313-win_arm64.whl", hash = "sha256:b412483ff145b4fd3fa550d97737497483fdf7af4d7f16149840364a943fdce1", size = 11260, upload-time = "2026-10-25T04:30:23.119Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/c5/0995f18ca178d80bb925221953c953461d6c2ddf8e21bc32cbdc2a0b88f8/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp314-cp314-win32.whl", hash = "sha256:b43c6771dad4732f2c3c31fb38b142ee6985780e48aff71201ede101396811b7", size = 11128, upload-time = "2026-10-25T04:30:24.086Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/ff/52156d6fa8a2cc71cb6fbbcb6a79638926de2ed3c3b89d7a503f420d7e12/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp314-cp314-win_amd64.whl", hash = "sha256:aa0bc28826bdfbca27c2c24cf92a2cbf2f687354f121b984ea253b7b510b89b9", size = 11350, upload-time = "2026-10-25T04:30:26.059Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/50/c583ea1f339562bf8d6fc07bc21d8754171dbd232ac17a23f7a11d1b3f3d/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp314-cp314-win_arm64.whl", hash = "sha256:43622b79732e94976e462e40826443c3c660b6c50bdd3f236da37a64670c367c", size = 11303, upload-time = "2026-10-25T04:30:26.775Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/6e/eb65096fd283a06a1e0bdc5cfe2bb64124846d8c6e60dbdf3ae9f4717d4b/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp314-cp314t-win32.whl", hash = "sha256:26ca379f59bcd9f5a8305f40407728926f4acd3f9bc4b33fdfd89e98b912bbd5", size = 11257, upload-time = "2026-10-25T04:30:27.52Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/c5/a8356b60e893b548b945485d8e4c9769050a3d8c035f09511bc3ca810d46/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp314-cp314t-win_amd64.whl", hash = "sha256:af66bd06b79d6cbdd727cfbc4bdf7878f381d9681a896329461575ea51bfc76a", size = 11477, upload-time = "2026-10-25T04:30:28.259Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/41/de866ea2c0cad52ade2d5457add1afbb4ff13e51e5b493de48c6efa848aa/winrt_windows_graphics_directx_direct3d11_interop-4.1.0-cp314-cp314t-win_arm64.whl", hash = "sha256:b0daa82a47d3633117d666792b6bfee89981fa6cac5ff923df219f50ebbe5821", size = 11451, upload-time = "2026-10-25T04:30:29.168Z" },
 ]
 
 [[package]]

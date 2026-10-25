@@ -15,8 +15,8 @@ What needs improving, here and in the projects this app is built on.
       acting on whole commands.
 - [ ] **The 3D view looks slightly soft,** probably pygfx's antialiasing filter. Try
       its pixel filter settings.
-- [ ] **Screenshot device:** replace the ctypes `D3D11CreateDevice` in `screenshot.py`
-      with `create_direct3d11_device()` once PyWinRT releases it (see below).
+- [x] **Screenshot device:** `screenshot.py` uses PyWinRT's `create_direct3d11_device()`
+      rather than ctypes.
 - [x] **Physics:** the robot is simulated with MuJoCo (rigid bodies, wheel slip,
       pushing things). Still to do: use it for the "goals in the scene" milestone,
       and show where the robot thinks it is (odometry) next to where it is.
@@ -28,9 +28,9 @@ What needs improving, here and in the projects this app is built on.
 
 ### PyWinRT
 
-- [ ] **`create_direct3d11_device()`** in `winrt-Windows.Graphics.DirectX.Direct3D11.Interop`:
-      branch `d3d11-create-device` is pushed and its PR is not open yet. See
-      [pywinrt#78](https://github.com/pywinrt/pywinrt/issues/78), where it was asked for.
+- [x] **`create_direct3d11_device()`** in `winrt-Windows.Graphics.DirectX.Direct3D11.Interop`
+      4.1.0 ([pywinrt#159](https://github.com/pywinrt/pywinrt/pull/159), asked for in
+      [pywinrt#78](https://github.com/pywinrt/pywinrt/issues/78)).
 - [ ] **The guest asyncio loop** (`pybricks_voice/loop.py`) in `winrt-runtime`, with its
       tests.
 - [ ] **A WinUI startup helper** for unpackaged apps: DPI awareness (`python.exe`'s

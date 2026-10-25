@@ -32,7 +32,7 @@ dependencies = [
     "winrt-Windows.Graphics.Capture.Interop",
     "winrt-Windows.Graphics.DirectX",
     "winrt-Windows.Graphics.DirectX.Direct3D11",
-    "winrt-Windows.Graphics.DirectX.Direct3D11.Interop",
+    "winrt-Windows.Graphics.DirectX.Direct3D11.Interop>=4.1.0",
     "winrt-Windows.Graphics.Imaging",
     "winrt-Windows.Security.Authorization.AppCapabilityAccess",
     # The 3D view. Its FreeType DLL comes from tools/get_freetype.py on Windows ARM64.
