@@ -107,10 +107,10 @@ ignore = [
 # Command-line scripts, where printing is the point, and with loops of their own.
 "tools/*" = ["T20", "TID251"]
 "spikes/*" = ["T20"]
-# Windows-only code imports its platform's packages after `assert not
-# TYPE_CHECKING or sys.platform == "win32"`, which type checking elsewhere stops at.
-"pybricks_voice/windows/*" = ["E402"]
-"tests/windows/*" = ["E402"]
+# Platform code imports its platform's packages after `assert not
+# TYPE_CHECKING or sys.platform == ...`, which type checking elsewhere stops at.
+"pybricks_voice/{windows,macos}/*" = ["E402"]
+"tests/{windows,macos}/*" = ["E402"]
 "tools/{check_whisper,eval_commands,mic_channels}.py" = ["E402", "T20", "TID251"]
 
 [tool.pyright]

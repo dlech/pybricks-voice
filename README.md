@@ -51,7 +51,7 @@ switches between the chase camera and the top view, and the scroll wheel zooms.
 ## Check
 
 ```
-uv run python -m unittest          # robot, grammar, segmenter, physics; tests/windows/ on Windows only
+uv run python -m unittest          # robot, grammar, segmenter, physics; tests/windows/ and tests/macos/ on their platforms
 uv run tools/check_whisper.py      # Windows speech synthesis -> Whisper on the NPU -> commands
 ```
 
@@ -75,6 +75,8 @@ uv run tools/check_whisper.py      # Windows speech synthesis -> Whisper on the 
 | `pybricks_voice/windows/whisper_qnn.py` | Whisper-Small on the NPU |
 | `pybricks_voice/windows/microphone.py` | the microphone, through AudioGraph |
 | `pybricks_voice/windows/loop.py` | asyncio as a guest of the UI thread's `DispatcherQueue` |
+| `pybricks_voice/macos/loop.py` | asyncio as a guest of the main thread's `CFRunLoop` |
+| `pybricks_voice/macos/corefoundation.py` | the CoreFoundation calls that needs, declared with ctypes |
 | `tools/get_freetype.py` | builds `vendor/freetype.dll` for pygfx |
 | `tools/get_mujoco.py` | builds a MuJoCo wheel into `vendor/wheels/` |
 | `tools/xaml_types.py` | generates typed classes for the `.xaml` files, with their event wiring, as WinUI's compiler does for C# |
