@@ -39,6 +39,8 @@ dependencies = [
     "pygfx>=0.17.0",
     # scene.py makes the SwapChainPanel surface through wgpu-py internals.
     "wgpu>=0.32,<0.33",
+    # The physics. On Windows ARM64 its wheel comes from tools/get_mujoco.py.
+    "mujoco>=3.17",
 ]
 
 [dependency-groups]
@@ -50,6 +52,8 @@ dev = [
 [tool.uv]
 # An app, not a library: run it from the checkout.
 package = false
+# Wheels built here for what has none for Windows ARM64 (tools/get_mujoco.py).
+find-links = ["vendor/wheels"]
 
 [tool.ruff]
 line-length = 120

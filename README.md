@@ -1,8 +1,10 @@
 # pybricks-voice
 
 Drive a LEGO robot by talking to it. Whisper runs on the laptop's NPU, and for
-now the robot is a 3D simulation of a SPIKE Prime driving base, so the voice
-side can be built and tested without Bluetooth or a real table.
+now the robot is a simulated SPIKE Prime driving base, with real physics from
+[MuJoCo](https://mujoco.org): its wheels can slip, and it can push the blocks
+and the ball on its table. So the voice side can be built and tested without
+Bluetooth or a real table.
 
 ```
 "forward 50 centimeters, turn right 90 degrees, then back 20"
@@ -20,16 +22,20 @@ and ONNX Runtime's QNN provider for the NPU.
 
 - A Snapdragon X Elite PC (the Whisper model is precompiled for its NPU)
 - [uv](https://docs.astral.sh/uv/) and an ARM64 CPython 3.14 (pinned in `.python-version`)
-- Visual Studio 2026 with the C++ workload, and CMake, to build FreeType once: pygfx
-  needs it, and `freetype-py` has none for Windows ARM64
+- Visual Studio with the C++ workload and its "C++ Clang tools for Windows", and
+  CMake, to build MuJoCo and FreeType once: neither has Windows ARM64 builds
 
 ## Setup
 
 ```
+uv run --no-project tools/get_mujoco.py
 uv sync
 uv run tools/get_models.py
 uv run tools/get_freetype.py
 ```
+
+`get_mujoco.py` comes first: `uv sync` installs MuJoCo from the wheel it
+builds into `vendor/wheels/`.
 
 ## Run
 
@@ -53,12 +59,14 @@ uv run tools/check_whisper.py      # Windows speech synthesis -> Whisper on the 
 
 | | |
 |---|---|
-| `pybricks_voice/robot.py` | Pybricks `DriveBase`-style commands and the simulated robot |
+| `pybricks_voice/robot.py` | Pybricks `DriveBase`-style commands and their motion profiles: where each wheel should be |
 | `pybricks_voice/grammar.py` | what Whisper heard → commands |
 | `pybricks_voice/whisper.py` | Whisper-Small on the NPU, with a pure-Python token decoder |
 | `pybricks_voice/speech.py` | microphone, voice-activity detection, the Whisper worker thread |
 | `pybricks_voice/app.py` | the WinUI 3 window |
+| `pybricks_voice/physics.py` | the robot and its table in MuJoCo; its motors follow `robot.py`'s wheel angles |
 | `pybricks_voice/scene.py` | the 3D view: pygfx in a `SwapChainPanel` |
 | `pybricks_voice/loop.py` | asyncio as a guest of the UI thread's `DispatcherQueue` |
 | `tools/get_freetype.py` | builds `vendor/freetype.dll` for pygfx |
+| `tools/get_mujoco.py` | builds a MuJoCo wheel into `vendor/wheels/` |
 | `spikes/` | the same view tried with Composition Scenes, kept for its findings |

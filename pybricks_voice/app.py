@@ -54,6 +54,7 @@ from winrt.windows.ui.xaml.interop import TypeKind, TypeName
 
 from .grammar import describe, suggest
 from .loop import DispatcherQueueEventLoop
+from .physics import Physics
 from .robot import SimRobot
 from .scene import SceneView, use_d3d12
 from .screenshot import save_window
@@ -137,6 +138,8 @@ class App(Application, IXamlMetadataProvider):
         self._provider = XamlControlsXamlMetaDataProvider()
         self.options = options
         self.robot = SimRobot()
+        self.physics = Physics()
+        self.last_position = np.zeros(2)
         self.scene_ready = asyncio.Event()
         self.whisper_ready = asyncio.Event()
         self.last_tick = time.perf_counter()
@@ -292,14 +295,22 @@ class App(Application, IXamlMetadataProvider):
         now = time.perf_counter()
         self.tick_gaps.append(now - self.last_tick)
         dt, self.last_tick = min(now - self.last_tick, 0.1), now
+        # SimRobot turns commands into the angle each wheel should be at; the
+        # motors in the physics follow them, and what the robot really does
+        # comes from there.
         self.robot.step(dt)
         s = self.robot.state()
-        self.view.draw(s)
+        self.physics.step(dt, s.left_angle, s.right_angle)
+        world = self.physics.world()
+        self.view.draw(world)
         if self.view.ready:
             self.scene_ready.set()
+        position = world.robot.position[:2] * 100  # cm
+        speed = float(np.hypot(*(position - self.last_position))) / dt if dt else 0.0
+        self.last_position = position
         # Rounded first, then + 0.0, which turns -0.0 into 0.0: no "-0.0 cm" or "-0°".
-        x, y, heading = (round(s.x / 10, 1) + 0.0), (round(s.y / 10, 1) + 0.0), round(s.heading)
-        hud = f"x {x:.1f} cm · y {y:.1f} cm · heading {heading}° · {s.speed / 10:.0f} cm/s"
+        x, y = (round(float(v), 1) + 0.0 for v in position)
+        hud = f"x {x:.1f} cm · y {y:.1f} cm · heading {round(world.heading)}° · {speed:.0f} cm/s"
         if hud != self.hud.text:
             self.hud.text = hud
         pending = ([s.current] if s.current else []) + s.queued
@@ -403,6 +414,7 @@ class App(Application, IXamlMetadataProvider):
 
     def reset(self) -> None:
         self.robot.reset()
+        self.physics.reset()
         self.view.scene.reset()
 
     def toggle_camera(self) -> None:

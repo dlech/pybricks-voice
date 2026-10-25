@@ -17,9 +17,11 @@ What needs improving, here and in the projects this app is built on.
       its pixel filter settings.
 - [ ] **Screenshot device:** replace the ctypes `D3D11CreateDevice` in `screenshot.py`
       with `create_direct3d11_device()` once PyWinRT releases it (see below).
-- [ ] **Physics:** simulate the robot with MuJoCo (rigid bodies, wheel slip, pushing
-      things), in progress. MuJoCo has no Windows ARM64 wheels, so it is built from
-      source.
+- [x] **Physics:** the robot is simulated with MuJoCo (rigid bodies, wheel slip,
+      pushing things). Still to do: use it for the "goals in the scene" milestone,
+      and show where the robot thinks it is (odometry) next to where it is.
+- [ ] **Screenshot:** one capture came back blank while the app was running fine;
+      if it happens again, wait for a second frame.
 - [ ] **Milestone 2:** drive a real hub over Bluetooth LE with PyWinRT.
 
 ## Upstream
@@ -61,5 +63,9 @@ What needs improving, here and in the projects this app is built on.
 
 ### MuJoCo
 
-- [ ] **Windows ARM64 wheels:** neither PyPI nor the GitHub releases have them, though
-      the library and the Python bindings build fine from source here.
+- [ ] **Windows ARM64 wheels:** neither PyPI nor the GitHub releases have them.
+      `tools/get_mujoco.py` builds them: the library with MSVC, the bindings with
+      clang-cl, as MuJoCo's CI does for Windows. With MSVC the bindings fail to
+      link, since MSVC gives the code for the unnamed structs inside `mjVisual`
+      internal linkage in `structs_wrappers.cc`; a fix there would make MSVC
+      builds possible too.

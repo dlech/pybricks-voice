@@ -47,7 +47,7 @@ from winrt.microsoft.ui.xaml.controls import SwapChainPanel  # noqa: E402
 from winrt.microsoft.ui.xaml.media import ScaleTransform  # noqa: E402
 from winrt.runtime.interop import as_interface  # noqa: E402
 
-from .robot import State  # noqa: E402
+from .physics import THINGS, World  # noqa: E402
 
 ISWAPCHAINPANELNATIVE = uuid.UUID("63aad0b8-7c24-40ff-85a8-640d944cc325")  # microsoft.ui.xaml.media.dxinterop.h
 
@@ -157,6 +157,20 @@ def _about(axis: tuple[float, float, float], angle: float) -> np.ndarray:
     return la.quat_from_axis_angle(axis, angle)
 
 
+# From the physics' frame (x right, y forward, z up, in metres) to the scene's
+# (x right, y up, forward -z, in centimetres): a quarter turn about x.
+_TO_SCENE = np.array([[1.0, 0, 0], [0, 0, 1.0], [0, -1.0, 0]])
+
+
+def _place(obj: gfx.WorldObject, position: np.ndarray, rotation: np.ndarray) -> None:
+    obj.local.position = _TO_SCENE @ position * 100
+    obj.local.rotation = la.quat_from_mat(_TO_SCENE @ rotation @ _TO_SCENE.T)
+
+
+def _sphere(radius: float) -> gfx.Geometry:
+    return gfx.sphere_geometry(radius, 24, 16)  # pyright: ignore[reportArgumentType]  (typed int, takes float)
+
+
 def _box(width: float, height: float, depth: float) -> gfx.Geometry:
     return gfx.box_geometry(width, height, depth)  # pyright: ignore[reportArgumentType]  (typed int, takes float)
 
@@ -191,10 +205,10 @@ class RobotScene:
         white, yellow = _material("#f2f2f2"), _material("#ffcd03", 0.45)
         dark, teal = _material("#23262b", 0.8), _material("#00a3a6")
         for size, material, at in (
-            ((9.6, 3.2, 12), white, (0, 4.2, -2)),  # frame
-            ((8.8, 3.2, 5.6), yellow, (0, 7.4, -2.5)),  # hub
-            ((5, 0.6, 3), dark, (0, 9.1, -2.5)),  # hub screen
-            ((2.4, 2.4, 3.2), teal, (0, 4, -9.2)),  # sensor at the front
+            ((9.6, 3.2, 12), white, (0, 4.2, 2)),  # frame
+            ((8.8, 3.2, 5.6), yellow, (0, 7.4, 2.5)),  # hub
+            ((5, 0.6, 3), dark, (0, 9.1, 2.5)),  # hub screen
+            ((2.4, 2.4, 3.2), teal, (0, 4, -6)),  # sensor at the front
         ):
             self.robot.add(self._part(_box(*size), material, at))
         self.wheels = []
@@ -209,10 +223,22 @@ class RobotScene:
             self.wheels.append(wheel)
         self.robot.add(self._part(gfx.sphere_geometry(1, 16, 16), white, (0, 1, 6.5)))  # caster
         arrow = gfx.Mesh(gfx.cone_geometry(1.2, 3, 3), gfx.MeshBasicMaterial(color="#4f8cff"))
-        arrow.local.position = (0, 11, -6)
+        arrow.local.position = (0, 10.5, -1)
         arrow.local.rotation = _about((0, 1, 0), math.pi)  # pygfx's cones point along +z
         self.robot.add(arrow)
         self.scene.add(self.robot)
+
+        # Things on the table to push around, as physics.py defines them.
+        self.things = {}
+        for thing in THINGS:
+            if thing.shape == "box":
+                hx, hy, hz = (2 * v * 100 for v in thing.size)
+                geometry = _box(hx, hz, hy)  # the physics' y is the scene's depth
+            else:
+                geometry = _sphere(thing.size[0] * 100)
+            mesh = self._part(geometry, _material(thing.color, 0.6), (0, 0, 0))
+            self.scene.add(mesh)
+            self.things[thing.name] = mesh
 
         # Where the robot has been; NaN points aren't drawn.
         self.trail_points = np.full((self.MAX_TRAIL, 3), np.nan, np.float32)
@@ -238,13 +264,15 @@ class RobotScene:
         self.trail_buffer.update_range(0, self.trail_count)
         self.trail_count = 0
 
-    def pose(self, s: State) -> None:
-        x, z = s.x / 10, -s.y / 10  # mm -> cm, forward is -z
-        turn = -math.radians(s.heading)
-        self.robot.local.position = (x, 0, z)
-        self.robot.local.rotation = _about((0, 1, 0), turn)
-        self.wheels[0].local.rotation = _about((1, 0, 0), -math.radians(s.left_angle))
-        self.wheels[1].local.rotation = _about((1, 0, 0), -math.radians(s.right_angle))
+    def pose(self, world: World) -> None:
+        robot = world.robot
+        _place(self.robot, robot.position, robot.rotation)
+        x, _, z = self.robot.local.position
+        turn = -math.radians(world.heading)
+        self.wheels[0].local.rotation = _about((1, 0, 0), -math.radians(world.wheels[0]))
+        self.wheels[1].local.rotation = _about((1, 0, 0), -math.radians(world.wheels[1]))
+        for name, pose in world.things.items():
+            _place(self.things[name], pose.position, pose.rotation)
         last = self.trail_points[self.trail_count - 1] if self.trail_count else None
         if self.trail_count < self.MAX_TRAIL and (last is None or math.dist(last[::2], (x, z)) >= 0.5):
             self.trail_points[self.trail_count] = (x, 0.1, z)
@@ -308,7 +336,7 @@ class SceneView:
         self.renderer.pixel_ratio = scale
         self.canvas.resize(width, height, scale)
 
-    def draw(self, s: State) -> None:
-        self.scene.pose(s)
+    def draw(self, world: World) -> None:
+        self.scene.pose(world)
         if self.canvas is not None:
             self.canvas.force_draw()
