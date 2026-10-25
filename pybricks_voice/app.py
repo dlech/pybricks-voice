@@ -276,6 +276,8 @@ class App(Application, IXamlMetadataProvider):
             detail = (
                 f"Whisper {heard.timing.total_ms:.0f} ms on the NPU · "
                 f"moving {pause_ms + heard.latency_ms:.0f} ms after you stopped"
+                if self.options.timing
+                else None
             )
         else:
             detail = "typed"
@@ -441,6 +443,7 @@ def main() -> None:
     )
     parser.add_argument("--no-mic", action="store_true", help="don't open the microphone")
     parser.add_argument("--record", type=pathlib.Path, help="save every utterance (WAV + text) to this folder")
+    parser.add_argument("--timing", action="store_true", help="show Whisper's timings in the chat, for developing")
     parser.add_argument("--debug", action="store_true", help="log at DEBUG rather than INFO")
     options = parser.parse_args()
 
