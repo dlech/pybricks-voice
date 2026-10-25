@@ -1,4 +1,5 @@
-"""Scores the speech pipeline on 20 spoken commands (milestone 1: at least 18).
+"""
+Scores the speech pipeline on 20 spoken commands (milestone 1: at least 18).
 
 Each phrase is spoken by Windows' speech synthesis, cycling through every
 installed voice, and saved to out/eval/ so later runs (and other machines)

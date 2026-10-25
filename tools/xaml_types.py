@@ -1,4 +1,5 @@
-"""Generates typed Python classes for XAML files, as WinUI's compiler does for C#.
+"""
+Generates typed Python classes for XAML files, as WinUI's compiler does for C#.
 
 For each pybricks_voice/*.xaml, writes a .py next to it with a class that
 loads the XAML and has an attribute, of the element's WinRT type, for each
@@ -85,10 +86,12 @@ def _resolve(node: ast.expr, module: str) -> Type:
 
 
 def find_event(element: Type, event: str) -> tuple[str, Type, Type]:
-    """For an event of a WinRT type, by its WinRT name as XAML uses it: the
+    """
+    For an event of a WinRT type, by its WinRT name as XAML uses it: the
     Python method that adds a handler, and the handler's sender and arguments
     types. Each stub method has a comment above it with its WinRT signature,
-    which names the event's add method: "...::add_PointerWheelChanged(...)"."""
+    which names the event's add method: "...::add_PointerWheelChanged(...)".
+    """
     module, type_ = element
     signature = re.compile(rf"^\s*# .*::add_{re.escape(event)}\(")
     for base in getattr(importlib.import_module(module), type_).__mro__:

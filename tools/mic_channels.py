@@ -1,4 +1,5 @@
-"""Prints the level of each microphone channel for a few seconds.
+"""
+Prints the level of each microphone channel for a few seconds.
 
 Usage: uv run tools/mic_channels.py [seconds]
 """

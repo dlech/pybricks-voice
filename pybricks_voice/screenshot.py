@@ -1,4 +1,5 @@
-"""A window to PNG with Windows.Graphics.Capture, the API the Snipping Tool uses.
+"""
+A window to PNG with Windows.Graphics.Capture, the API the Snipping Tool uses.
 
 It captures what is on screen for the window, the SwapChainPanel's 3D view
 included (XAML's RenderTargetBitmap leaves that out), whatever is in front of

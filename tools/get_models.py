@@ -1,4 +1,5 @@
-"""Downloads Whisper-Small (w8a16, precompiled for the Snapdragon X Elite NPU)
+"""
+Downloads Whisper-Small (w8a16, precompiled for the Snapdragon X Elite NPU)
 from Qualcomm AI Hub, and the Whisper vocabulary from Hugging Face, into models/.
 
 Usage: uv run tools/get_models.py

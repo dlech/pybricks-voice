@@ -1,4 +1,5 @@
-"""Spike: why the guest asyncio loop stalls when a window drag starts.
+"""
+Spike: why the guest asyncio loop stalls when a window drag starts.
 
 A WinUI window with the guest loop ticking every 16 ms. It logs, with times:
   - each tick, and each gap between ticks over 40 ms

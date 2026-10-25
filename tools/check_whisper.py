@@ -1,4 +1,5 @@
-"""End-to-end check on the NPU: Windows speech synthesis -> Whisper -> grammar.
+"""
+End-to-end check on the NPU: Windows speech synthesis -> Whisper -> grammar.
 
 Synthesizes each phrase with Windows' own voice through PyWinRT, transcribes it
 on the NPU and parses it, so the whole pipeline is tested without a microphone.

@@ -1,4 +1,5 @@
-"""Spike: SPIKE Prime parts from the LDraw library, drawn offscreen with pygfx.
+"""
+Spike: SPIKE Prime parts from the LDraw library, drawn offscreen with pygfx.
 
 uv run python spikes/ldraw_preview.py LDRAW_DIR [UNOFFICIAL_DIR] --out out/ldraw.png
 """
@@ -31,8 +32,10 @@ PARTS = [  # file, color, where it goes (cm, scene frame)
 
 
 def mesh(library: Library, name: str, color: int, matrix=None, at=(0, 0, 0)) -> gfx.Group:
-    """A part as one mesh per color, in centimeters, y up; matrix and at
-    place it first, in LDU."""
+    """
+    A part as one mesh per color, in centimeters, y up; matrix and at
+    place it first, in LDU.
+    """
     group = gfx.Group()
     for code, tris in library.triangles(name, color).items():
         if matrix is not None:

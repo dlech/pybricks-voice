@@ -1,4 +1,5 @@
-"""Spike: the robot in 3D with Composition Scenes instead of WebView2 and three.js.
+"""
+Spike: the robot in 3D with Composition Scenes instead of WebView2 and three.js.
 
 A SceneVisual hosted in the window's root Grid draws meshes built here: the
 floor, a grid of lines, the robot from boxes and cylinders, and its trail.
@@ -127,9 +128,11 @@ def cylinder_x(radius: float, width: float, segments: int = 32):
 
 
 def strips(segments, width: float, z: float):
-    """Flat strips lying on the floor, one per segment ((x0, y0), (x1, y1)).
+    """
+    Flat strips lying on the floor, one per segment ((x0, y0), (x1, y1)).
     Line meshes draw black whatever their material, so lines are drawn as
-    triangles instead."""
+    triangles instead.
+    """
     positions, normals, indices = [], [], []
     for (x0, y0), (x1, y1) in segments:
         dx, dy = x1 - x0, y1 - y0
@@ -273,8 +276,10 @@ _UNFLIP = np.eye(4)
 
 
 def camera_matrix(eye, target, size, fov_y: float = 50.0, near: float = 1.0, far: float = 2000.0) -> Matrix4x4:
-    """View, perspective projection and a stretch to the visual, in the
-    row-vector convention Composition's matrices use (v' = v M)."""
+    """
+    View, perspective projection and a stretch to the visual, in the
+    row-vector convention Composition's matrices use (v' = v M).
+    """
     eye, target = np.asarray(eye, float), np.asarray(target, float)
     back = (eye - target) / np.linalg.norm(eye - target)  # the camera looks down -z
     right = np.cross((0.0, 0.0, 1.0), back)

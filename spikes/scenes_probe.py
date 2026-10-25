@@ -1,5 +1,7 @@
-"""Probe Composition Scenes' conventions: one box in four scenes side by side,
-z scaled +1 or -1, seen face-on or tilted 40 degrees about x."""
+"""
+Probe Composition Scenes' conventions: one box in four scenes side by side,
+z scaled +1 or -1, seen face-on or tilted 40 degrees about x.
+"""
 
 import ctypes
 import datetime

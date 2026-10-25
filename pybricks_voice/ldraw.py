@@ -1,4 +1,5 @@
-"""LEGO models from the LDraw parts library, as triangles for the 3D view.
+"""
+LEGO models from the LDraw parts library, as triangles for the 3D view.
 
 An LDraw file is lines of text. Type 1 places another file (a part, or a
 primitive such as a stud or a cylinder) with a color and a 3x4 transform;
@@ -43,8 +44,10 @@ class Color:
 
 
 class Library:
-    """An unpacked LDraw library: the official one, and any others searched
-    after it, such as the unofficial parts."""
+    """
+    An unpacked LDraw library: the official one, and any others searched
+    after it, such as the unofficial parts.
+    """
 
     def __init__(self, *roots: pathlib.Path) -> None:
         self.folders = [root / sub for root in roots for sub in ("parts", "p", "models", "")]
@@ -69,8 +72,10 @@ class Library:
         raise KeyError(f"LDraw color {code} isn't in LDConfig.ldr")
 
     def triangles(self, name: str, color: int = MAIN_COLOR) -> dict[int, np.ndarray]:
-        """The triangles of a part or model, n x 3 x 3 in LDU, by color.
-        Whatever it leaves as color 16 gets `color`."""
+        """
+        The triangles of a part or model, n x 3 x 3 in LDU, by color.
+        Whatever it leaves as color 16 gets `color`.
+        """
         flat = self._flat(name if pathlib.Path(name).is_absolute() else name.lower())
         if color == MAIN_COLOR or MAIN_COLOR not in flat:
             return flat
@@ -115,9 +120,11 @@ class Library:
 
 
 def normals(tris: np.ndarray, crease: float = math.radians(40)) -> np.ndarray:
-    """Vertex normals for n x 3 x 3 counterclockwise triangles: averaged with the
+    """
+    Vertex normals for n x 3 x 3 counterclockwise triangles: averaged with the
     faces around each corner, unless that bends it more than `crease` from its
-    own face's, so curves look round and edges stay sharp."""
+    own face's, so curves look round and edges stay sharp.
+    """
     faces = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])  # length: twice the area
     own = faces / np.maximum(np.linalg.norm(faces, axis=1, keepdims=True), 1e-12)
     # Corners at the same place, to a hundredth of an LDU, share a normal.

@@ -1,4 +1,5 @@
-"""Builds the FreeType DLL that pygfx needs, into vendor/.
+"""
+Builds the FreeType DLL that pygfx needs, into vendor/.
 
 pygfx imports freetype-py, which bundles FreeType on most platforms but not on
 Windows ARM64. This downloads a pinned FreeType release from the official

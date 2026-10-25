@@ -1,4 +1,5 @@
-"""The robot as rigid bodies in MuJoCo: what actually happens when it drives.
+"""
+The robot as rigid bodies in MuJoCo: what actually happens when it drives.
 
 SimRobot still turns DriveBase commands into motion profiles, and from them
 the angle each wheel should be at; here, as on a real hub, each motor follows
@@ -131,8 +132,10 @@ class Physics:
         mujoco.mj_forward(self.model, self.data)
 
     def step(self, dt: float, left_deg: float, right_deg: float) -> None:
-        """Advances by dt seconds with each motor holding its reference angle.
-        A wheel turning forward is a negative rotation about +x."""
+        """
+        Advances by dt seconds with each motor holding its reference angle.
+        A wheel turning forward is a negative rotation about +x.
+        """
         self.data.ctrl[:] = (-math.radians(left_deg), -math.radians(right_deg))
         for _ in range(max(1, round(dt / self.model.opt.timestep))):
             mujoco.mj_step(self.model, self.data)

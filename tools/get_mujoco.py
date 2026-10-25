@@ -1,4 +1,5 @@
-"""Builds a MuJoCo wheel for this machine into vendor/wheels/, for the physics.
+"""
+Builds a MuJoCo wheel for this machine into vendor/wheels/, for the physics.
 
 MuJoCo publishes no Windows ARM64 builds, of the library or of its Python
 bindings, so this builds both from pinned, checksummed sources: the library
@@ -62,8 +63,10 @@ def cmake() -> str:
 
 
 def clang_environment() -> tuple[dict[str, str], pathlib.Path]:
-    """The developer environment of a Visual Studio that has clang-cl, and
-    clang-cl itself."""
+    """
+    The developer environment of a Visual Studio that has clang-cl, and
+    clang-cl itself.
+    """
     installs = subprocess.run(
         [VSWHERE, "-all", "-products", "*", "-property", "installationPath"],
         capture_output=True,

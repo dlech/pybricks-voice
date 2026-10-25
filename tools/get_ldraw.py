@@ -1,4 +1,5 @@
-"""Copies the LDraw parts the robot model uses into pybricks_voice/models/ldraw/.
+"""
+Copies the LDraw parts the robot model uses into pybricks_voice/models/ldraw/.
 
 The 3D view draws the robot from LDraw's parts library, which is CC BY 4.0
 (see CAreadme.txt there), but needs only a few hundred of its files, so those

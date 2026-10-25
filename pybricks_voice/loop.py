@@ -1,4 +1,5 @@
-"""asyncio for a WinUI 3 app, as a guest of the UI thread's DispatcherQueue.
+"""
+asyncio for a WinUI 3 app, as a guest of the UI thread's DispatcherQueue.
 
 WinUI's Application.start() pumps the UI thread, and so does every modal loop
 Windows runs inside it: the one that moves or resizes the window while it is
@@ -39,8 +40,10 @@ _Status = tuple[int, int, int, int]
 
 
 class _HandoffProactor(windows_events.IocpProactor):
-    """An IOCP proactor whose port is waited on by a thread of its own, which
-    hands each completion to the loop's thread; the loop's thread never blocks."""
+    """
+    An IOCP proactor whose port is waited on by a thread of its own, which
+    hands each completion to the loop's thread; the loop's thread never blocks.
+    """
 
     def __init__(self, wake: Callable[[], None]) -> None:
         super().__init__()
@@ -126,7 +129,8 @@ class _HandoffProactor(windows_events.IocpProactor):
 
 
 class DispatcherQueueEventLoop(asyncio.ProactorEventLoop):
-    """A ProactorEventLoop that runs as a guest of a DispatcherQueue.
+    """
+    A ProactorEventLoop that runs as a guest of a DispatcherQueue.
 
     Create it and call start() on the queue's thread, and let the queue's owner
     pump the thread. start() returns at once; the loop runs until stop(), and

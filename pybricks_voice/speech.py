@@ -1,4 +1,5 @@
-"""Microphone -> utterances -> Whisper -> commands, off the UI thread.
+"""
+Microphone -> utterances -> Whisper -> commands, off the UI thread.
 
 The microphone comes in through WinRT's AudioGraph; each AudioFrame's buffer
 is read into NumPy through PyWinRT 4.0's buffer protocol. A small
@@ -33,7 +34,8 @@ log = logging.getLogger(__name__)
 
 
 class Segmenter:
-    """Cuts a stream of samples into utterances.
+    """
+    Cuts a stream of samples into utterances.
 
     Speech starts after START_MS of frames louder than the noise floor by
     MARGIN_DB, and ends after END_MS of quieter ones. PREROLL_MS before the
@@ -193,8 +195,10 @@ _FILLERS = {"um", "uh", "hmm", "mm", "ah", "oh", "er", "erm", "you", "thank you"
 
 
 def is_noise(text: str) -> bool:
-    """What Whisper says for a room rather than a person: [BLANK_AUDIO],
-    (clicking), "Um…", or the "Thank you." it is known to invent for silence."""
+    """
+    What Whisper says for a room rather than a person: [BLANK_AUDIO],
+    (clicking), "Um…", or the "Thank you." it is known to invent for silence.
+    """
     words = re.sub(r"\[[^\]]*\]|\([^)]*\)|\*[^*]*\*", " ", text)
     words = re.sub(r"[^a-z' ]", " ", words.lower())
     words = " ".join(words.split())
@@ -220,7 +224,8 @@ def _settle(future: asyncio.Future[Any], result: Any, error: BaseException | Non
 
 
 class Listener:
-    """Turns speech into Heard, for an asyncio event loop.
+    """
+    Turns speech into Heard, for an asyncio event loop.
 
     feed() takes audio from any thread (the microphone's is WinRT's own); the
     segmenter cuts it into utterances there, and each is handed to the loop.

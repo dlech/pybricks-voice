@@ -85,8 +85,10 @@ def tearDownModule() -> None:
 
 
 def run(make: Callable[[DispatcherQueue], Coroutine[Any, Any, Any]], timeout: float = 10) -> Any:
-    """Runs a coroutine on a guest loop, on a thread of its own whose
-    DispatcherQueue is what pumps it, the way Application.start() would."""
+    """
+    Runs a coroutine on a guest loop, on a thread of its own whose
+    DispatcherQueue is what pumps it, the way Application.start() would.
+    """
     outcome: dict[str, Any] = {}
 
     def thread() -> None:
@@ -121,8 +123,10 @@ def run(make: Callable[[DispatcherQueue], Coroutine[Any, Any, Any]], timeout: fl
 
 
 def message_box_from_window_message(seconds: float, done: Callable[[], object]) -> None:
-    """A modal loop entered from a window message, as a window drag is, and
-    closed from another thread after a while. On the calling thread."""
+    """
+    A modal loop entered from a window message, as a window drag is, and
+    closed from another thread after a while. On the calling thread.
+    """
     title = "pybricks-voice modal test"
     hwnd = _user32.CreateWindowExW(0, "PybricksVoiceLoopTest", None, 0, 0, 0, 0, 0, HWND_MESSAGE, None, None, None)
 

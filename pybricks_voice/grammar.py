@@ -1,4 +1,5 @@
-"""Turns what Whisper heard into robot commands.
+"""
+Turns what Whisper heard into robot commands.
 
 A small grammar rather than a language model: plain driving instructions are
 a handful of shapes, and anything that doesn't fit is reported back instead of
@@ -539,9 +540,11 @@ _COMMENT_RE = re.compile(r"^(?:why|how come|when|where|who|i (?:mean|think|guess
 
 
 def _is_comment(segment: str) -> bool:
-    """Talk about the robot rather than to it: "Why can't you draw a backward
+    """
+    Talk about the robot rather than to it: "Why can't you draw a backward
     circle?", "You don't go backwards", "…and then came back". Never a command,
-    and not worth an "I didn't get that" either."""
+    and not worth an "I didn't get that" either.
+    """
     words = set(segment.split())
     if "can" in words and "t" not in words:
         words.discard("can")  # "can you…" asks for something; "can t" doesn't

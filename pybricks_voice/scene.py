@@ -1,4 +1,5 @@
-"""The 3D view: pygfx, presented into a WinUI SwapChainPanel.
+"""
+The 3D view: pygfx, presented into a WinUI SwapChainPanel.
 
 wgpu-native can make a surface from a SwapChainPanel's ISwapChainPanelNative
 (WGPUSurfaceSourceSwapChainPanel, D3D12 only), which PyWinRT's
@@ -66,8 +67,10 @@ ISWAPCHAINPANELNATIVE = uuid.UUID("63aad0b8-7c24-40ff-85a8-640d944cc325")  # mic
 
 
 def use_d3d12() -> str:
-    """Has pygfx render with D3D12, the only backend that can present into a
-    SwapChainPanel; returns the adapter's name. Call before the first render."""
+    """
+    Has pygfx render with D3D12, the only backend that can present into a
+    SwapChainPanel; returns the adapter's name. Call before the first render.
+    """
     adapters = [a for a in wgpu.gpu.enumerate_adapters_sync() if a.info["backend_type"] == "D3D12"]
     adapters.sort(key=lambda a: a.info["adapter_type"] not in ("DiscreteGPU", "IntegratedGPU"))
     if not adapters:
@@ -107,8 +110,10 @@ class _PanelGroup(BaseCanvasGroup):
 
 
 class SwapChainPanelCanvas(BaseRenderCanvas):
-    """A rendercanvas that presents into a SwapChainPanel. It has no loop of its
-    own: the app draws with force_draw() when it wants a frame."""
+    """
+    A rendercanvas that presents into a SwapChainPanel. It has no loop of its
+    own: the app draws with force_draw() when it wants a frame.
+    """
 
     _rc_canvas_group = _PanelGroup(None)  # pyright: ignore[reportArgumentType]  (no loop: the app draws)
 
@@ -175,8 +180,10 @@ _WHEELS = [
 
 
 def _ldraw_group(library: ldraw.Library, name: str, color: int = ldraw.MAIN_COLOR, matrix=None) -> gfx.Group:
-    """An LDraw model or part as one mesh per color, in the scene's frame,
-    turned by matrix (an LDraw line's nine numbers) first."""
+    """
+    An LDraw model or part as one mesh per color, in the scene's frame,
+    turned by matrix (an LDraw line's nine numbers) first.
+    """
     group = gfx.Group()
     for code, tris in library.triangles(name, color).items():
         if matrix is not None:
@@ -225,8 +232,10 @@ def _box(width: float, height: float, depth: float) -> gfx.Geometry:
 
 
 class RobotScene:
-    """The table, a SPIKE-ish driving base, its trail, and a camera that
-    follows it from behind or looks down from above."""
+    """
+    The table, a SPIKE-ish driving base, its trail, and a camera that
+    follows it from behind or looks down from above.
+    """
 
     MAX_TRAIL = 50_000
 
@@ -331,14 +340,16 @@ class RobotScene:
 
 
 class SceneView:
-    """A RobotScene drawn into a SwapChainPanel that sits in a Canvas, 60 times a
+    """
+    A RobotScene drawn into a SwapChainPanel that sits in a Canvas, 60 times a
     second by a thread of its own. Each frame it calls step(dt), on that thread,
     for the world to draw.
 
     The first frame is drawn on the UI thread, though: that is when wgpu gives
     the panel its swap chain, with ISwapChainPanelNative::SetSwapChain, which
     fails on any other thread. Resizing the swap chain later doesn't need the
-    panel."""
+    panel.
+    """
 
     FPS = 60
 
@@ -412,8 +423,10 @@ class SceneView:
             log.exception("the 3D view stopped")
 
     def _frames(self) -> None:
-        """Steps and draws on the clock: a late frame makes the next one sooner
-        rather than pushing them all back."""
+        """
+        Steps and draws on the clock: a late frame makes the next one sooner
+        rather than pushing them all back.
+        """
         while not self._drawn.wait(0.1):
             if self._stop.is_set():
                 return

@@ -1,4 +1,5 @@
-"""The window: a 3D simulated robot you drive by voice, with Whisper on the NPU.
+"""
+The window: a 3D simulated robot you drive by voice, with Whisper on the NPU.
 
 The UI thread runs asyncio as a guest of WinUI's DispatcherQueue (see
 loop.py), so the app is coroutines that touch XAML directly: one updates the
@@ -151,8 +152,10 @@ class App(Application, IXamlMetadataProvider):
             self.microphone.stop()
 
     def set_listening(self, on: bool) -> None:
-        """Off closes the microphone, so Windows no longer shows it in use, and
-        drops whatever was half heard; on opens it again."""
+        """
+        Off closes the microphone, so Windows no longer shows it in use, and
+        drops whatever was half heard; on opens it again.
+        """
         self.ui.listen_label.text = "Listening" if on else "Muted"
         self.listener.muted = not on
         if on:
@@ -166,8 +169,10 @@ class App(Application, IXamlMetadataProvider):
         self.ui.level_text.text = ""
 
     async def feed_wavs(self) -> None:
-        """--feed-wav: plays files into the listener at real-time pace, with room
-        noise between them, so the segmenter and Whisper see what a mic would give."""
+        """
+        --feed-wav: plays files into the listener at real-time pace, with room
+        noise between them, so the segmenter and Whisper see what a mic would give.
+        """
         rng = np.random.default_rng(0)
 
         async def stream(audio: np.ndarray) -> None:
@@ -194,9 +199,11 @@ class App(Application, IXamlMetadataProvider):
     # ----- every frame --------------------------------------------------------
 
     def step(self, dt: float) -> World:
-        """On the render thread, each frame: SimRobot turns commands into the
+        """
+        On the render thread, each frame: SimRobot turns commands into the
         angle each wheel should be at; the motors in the physics follow them,
-        and what the robot really does comes from there."""
+        and what the robot really does comes from there.
+        """
         self.robot.step(dt)
         s = self.robot.state()
         with self.physics_lock:
@@ -209,8 +216,10 @@ class App(Application, IXamlMetadataProvider):
         return world
 
     async def frames(self) -> None:
-        """Updates the HUD and the level meter 60 times a second, on the clock: a
-        late frame makes the next one sooner rather than pushing them all back."""
+        """
+        Updates the HUD and the level meter 60 times a second, on the clock: a
+        late frame makes the next one sooner rather than pushing them all back.
+        """
         period = 1 / 60
         next_frame = time.perf_counter()
         while True:
@@ -240,9 +249,11 @@ class App(Application, IXamlMetadataProvider):
             self.ui.queue_text.text = ("Now: " + describe(pending)) if pending else "Waiting for a command"
 
     def show_level(self, level_db: float, dt: float, now: float) -> None:
-        """The microphone level, smoothed like a VU meter: it follows each 30 ms
+        """
+        The microphone level, smoothed like a VU meter: it follows each 30 ms
         frame quickly on the way up and slowly on the way down, so room noise and
-        the gaps between syllables don't make it flicker."""
+        the gaps between syllables don't make it flicker.
+        """
         tau = LEVEL_RISE_S if level_db > self.level_db else LEVEL_FALL_S
         self.level_db += (max(level_db, -120.0) - self.level_db) * (1 - math.exp(-dt / tau))
         value = min(max(self.level_db, self.ui.level.minimum), self.ui.level.maximum)

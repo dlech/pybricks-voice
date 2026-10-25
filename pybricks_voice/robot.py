@@ -1,4 +1,5 @@
-"""Robot commands in the shape of Pybricks' DriveBase, and a simulated robot.
+"""
+Robot commands in the shape of Pybricks' DriveBase, and a simulated robot.
 
 The commands mirror pybricks.robotics.DriveBase: straight(mm), turn(deg),
 drive(speed, turn_rate) for a time, and stop(). A real hub can run them as
@@ -36,7 +37,8 @@ class Turn:
 
 @dataclass(frozen=True)
 class Curve:
-    """An arc: like Pybricks' DriveBase.curve(radius, angle).
+    """
+    An arc: like Pybricks' DriveBase.curve(radius, angle).
 
     A negative radius drives backwards, as in Pybricks; the angle's sign is the
     direction the heading turns, positive right (clockwise), as turn() does.

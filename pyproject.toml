@@ -70,6 +70,7 @@ select = [
     "RUF",     # ruff's own
     "T20",     # no print(): the app logs
     "G",       # logging calls let logging do the formatting
+    "D209", "D213",  # multi-line docstrings: """ on lines of their own
 ]
 ignore = [
     "RUF001", "RUF002", "RUF003",  # ×, °, “” and … are meant in user-facing text and comments

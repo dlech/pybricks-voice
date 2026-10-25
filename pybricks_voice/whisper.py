@@ -1,4 +1,5 @@
-"""Whisper-Small on the Hexagon NPU, through ONNX Runtime's QNN provider.
+"""
+Whisper-Small on the Hexagon NPU, through ONNX Runtime's QNN provider.
 
 Qualcomm ships the model precompiled for the Snapdragon X Elite (QAIRT 2.50):
 an encoder that turns 30 s of log-mel features into per-layer cross-attention
@@ -100,8 +101,10 @@ class Vocabulary:
 
 
 def _run(session: ort.InferenceSession, feeds: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
-    """All of a session's outputs by name. ONNX Runtime types them as arrays,
-    sparse tensors, sequences or maps; Whisper's are all plain arrays."""
+    """
+    All of a session's outputs by name. ONNX Runtime types them as arrays,
+    sparse tensors, sequences or maps; Whisper's are all plain arrays.
+    """
     names = [o.name for o in session.get_outputs()]
     outputs = session.run(names, feeds)
     arrays = {}
