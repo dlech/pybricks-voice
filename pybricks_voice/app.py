@@ -1,9 +1,11 @@
 """The window: a 3D simulated robot you drive by voice, with Whisper on the NPU.
 
 The UI thread runs asyncio as a guest of WinUI's DispatcherQueue (see
-loop.py), so the app is coroutines that touch XAML directly: one steps the
-simulator 60 times a second and draws it with pygfx into a SwapChainPanel
-(see scene.py), another reacts to what was heard. Two threads of their own do the rest:
+loop.py), so the app is coroutines that touch XAML directly: one updates the
+HUD 60 times a second, another reacts to what was heard. Threads of their own
+do the rest:
+  render        steps the simulator and the physics and draws them with pygfx
+                into a SwapChainPanel, 60 times a second (see scene.py)
   audio thread  AudioGraph quanta -> the voice-activity segmenter
   whisper       transcribes each utterance on the NPU (a daemon thread)
 """
@@ -16,6 +18,7 @@ import ctypes
 import logging
 import math
 import pathlib
+import threading
 import time
 import wave
 from typing import override
@@ -54,8 +57,8 @@ from winrt.windows.ui.xaml.interop import TypeKind, TypeName
 
 from .grammar import describe, suggest
 from .loop import DispatcherQueueEventLoop
-from .physics import Physics
-from .robot import SimRobot
+from .physics import Physics, World
+from .robot import SimRobot, State
 from .scene import SceneView, use_d3d12
 from .screenshot import save_window
 from .speech import Heard, Listener, Microphone, Segmenter
@@ -139,7 +142,9 @@ class App(Application, IXamlMetadataProvider):
         self.options = options
         self.robot = SimRobot()
         self.physics = Physics()
+        self.physics_lock = threading.Lock()  # stepped by the render thread, reset by the UI
         self.last_position = np.zeros(2)
+        self.frame: tuple[World, State, float] | None = None  # the latest, from the render thread
         self.scene_ready = asyncio.Event()
         self.whisper_ready = asyncio.Event()
         self.last_tick = time.perf_counter()
@@ -159,7 +164,7 @@ class App(Application, IXamlMetadataProvider):
         self.window.app_window.resize(SizeInt32(1600, 1000))
         content = self.window.content.as_(FrameworkElement)
         find = content.find_name
-        self.view = SceneView(find("host").as_(FrameworkElement), find("panel").as_(SwapChainPanel))
+        self.view = SceneView(find("host").as_(FrameworkElement), find("panel").as_(SwapChainPanel), self.step)
         self.hud = find("hud").as_(TextBlock)
         self.status = find("status").as_(TextBlock)
         self.level = find("level").as_(ProgressBar)
@@ -189,6 +194,8 @@ class App(Application, IXamlMetadataProvider):
         self.dispatcher_shutdown_mode = DispatcherShutdownMode.ON_EXPLICIT_SHUTDOWN
         self.loop = DispatcherQueueEventLoop(self.window.dispatcher_queue)
         self.loop.start()
+        self.view.on_first_frame = lambda: self.loop.call_soon_threadsafe(self.scene_ready.set)
+        self.view.start()
         self.listener = Listener(self.loop)
         self.listener.record_dir = self.options.record
         self.microphone = Microphone(lambda samples: self.listener.feed(samples, self.microphone.rate))
@@ -281,9 +288,24 @@ class App(Application, IXamlMetadataProvider):
 
     # ----- every frame --------------------------------------------------------
 
+    def step(self, dt: float) -> World:
+        """On the render thread, each frame: SimRobot turns commands into the
+        angle each wheel should be at; the motors in the physics follow them,
+        and what the robot really does comes from there."""
+        self.robot.step(dt)
+        s = self.robot.state()
+        with self.physics_lock:
+            self.physics.step(dt, s.left_angle, s.right_angle)
+            world = self.physics.world()
+        position = world.robot.position[:2] * 100  # cm
+        speed = float(np.hypot(*(position - self.last_position))) / dt if dt else 0.0
+        self.last_position = position
+        self.frame = (world, s, speed)
+        return world
+
     async def frames(self) -> None:
-        """Steps the simulator and draws, 60 times a second, on the clock: a late
-        frame makes the next one sooner rather than pushing them all back."""
+        """Updates the HUD and the level meter 60 times a second, on the clock: a
+        late frame makes the next one sooner rather than pushing them all back."""
         period = 1 / 60
         next_frame = time.perf_counter()
         while True:
@@ -295,19 +317,13 @@ class App(Application, IXamlMetadataProvider):
         now = time.perf_counter()
         self.tick_gaps.append(now - self.last_tick)
         dt, self.last_tick = min(now - self.last_tick, 0.1), now
-        # SimRobot turns commands into the angle each wheel should be at; the
-        # motors in the physics follow them, and what the robot really does
-        # comes from there.
-        self.robot.step(dt)
-        s = self.robot.state()
-        self.physics.step(dt, s.left_angle, s.right_angle)
-        world = self.physics.world()
-        self.view.draw(world)
-        if self.view.ready:
-            self.scene_ready.set()
+        seg = self.listener.segmenter
+        if seg is not None and not self.listener.muted:
+            self.show_level(seg.level_db, seg.speaking, dt, now)
+        if self.frame is None:
+            return
+        world, s, speed = self.frame
         position = world.robot.position[:2] * 100  # cm
-        speed = float(np.hypot(*(position - self.last_position))) / dt if dt else 0.0
-        self.last_position = position
         # Rounded first, then + 0.0, which turns -0.0 into 0.0: no "-0.0 cm" or "-0°".
         x, y = (round(float(v), 1) + 0.0 for v in position)
         hud = f"x {x:.1f} cm · y {y:.1f} cm · heading {round(world.heading)}° · {speed:.0f} cm/s"
@@ -317,9 +333,6 @@ class App(Application, IXamlMetadataProvider):
         if pending != self.shown_pending:  # only when it changes, not 60 times a second
             self.shown_pending = pending
             self.queue_text.text = ("Now: " + describe(pending)) if pending else "Waiting for a command"
-        seg = self.listener.segmenter
-        if seg is not None and not self.listener.muted:
-            self.show_level(seg.level_db, seg.speaking, dt, now)
 
     def show_level(self, level_db: float, speaking: bool, dt: float, now: float) -> None:
         """The microphone level, smoothed like a VU meter: it follows each 30 ms
@@ -414,8 +427,9 @@ class App(Application, IXamlMetadataProvider):
 
     def reset(self) -> None:
         self.robot.reset()
-        self.physics.reset()
-        self.view.scene.reset()
+        with self.physics_lock:
+            self.physics.reset()
+        self.view.reset()
 
     def toggle_camera(self) -> None:
         self.view.scene.chase = not self.view.scene.chase
@@ -430,15 +444,18 @@ class App(Application, IXamlMetadataProvider):
     def finished(self, task: asyncio.Task[None]) -> None:
         if not task.cancelled() and (error := task.exception()) is not None:
             log.error("the app stopped on an error", exc_info=error)
-        gaps = np.array(self.tick_gaps[30:]) * 1000  # skip start-up
-        if len(gaps):
-            log.info(
-                "UI timer (16 ms): median gap %.1f ms, p99 %.1f ms, max %.1f ms, %d gaps over 50 ms",
-                np.median(gaps),
-                np.percentile(gaps, 99),
-                gaps.max(),
-                (gaps > 50).sum(),
-            )
+        self.view.close()
+        for name, gaps in (("UI timer", self.tick_gaps), ("3D view", self.view.frame_gaps)):
+            gaps = np.array(gaps[30:]) * 1000  # skip start-up
+            if len(gaps):
+                log.info(
+                    "%s (16 ms): median gap %.1f ms, p99 %.1f ms, max %.1f ms, %d gaps over 50 ms",
+                    name,
+                    np.median(gaps),
+                    np.percentile(gaps, 99),
+                    gaps.max(),
+                    (gaps > 50).sum(),
+                )
         if self.latencies:
             pause, median = Segmenter.END_MS, float(np.median(self.latencies))
             log.info(
