@@ -14,6 +14,7 @@ import argparse
 import asyncio
 import ctypes
 import ctypes.wintypes
+import math
 import pathlib
 import time
 import traceback
@@ -33,6 +34,7 @@ from winrt.microsoft.ui.xaml import (
 )
 from winrt.microsoft.ui.xaml.controls import (
     Button,
+    ProgressBar,
     ScrollViewer,
     StackPanel,
     SwapChainPanel,
@@ -58,7 +60,8 @@ from .scene import SceneView, use_d3d12
 from .speech import Heard, Listener, Microphone, Segmenter
 from .whisper import SAMPLE_RATE
 
-LEVEL_FALL_DB_S = 30.0
+# The level meter: how quickly it follows the microphone up and down, in seconds.
+LEVEL_RISE_S, LEVEL_FALL_S = 0.05, 0.35
 
 XAML = """
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation">
@@ -95,7 +98,11 @@ XAML = """
             </StackPanel>
             <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="12">
                 <ToggleSwitch Name="listen" OnContent="Listening" OffContent="Muted" IsOn="True"/>
-                <TextBlock Name="level" VerticalAlignment="Center" Opacity="0.6" FontFamily="Consolas"/>
+                <ProgressBar Name="level" Width="110" VerticalAlignment="Center" Minimum="-70" Maximum="-10"/>
+                <TextBlock Name="level_db" Width="52" VerticalAlignment="Center" Opacity="0.6"
+                           FontFamily="Consolas" TextAlignment="Right"/>
+                <Ellipse Name="speaking" Width="10" Height="10" VerticalAlignment="Center" Opacity="0"
+                         Fill="{ThemeResource AccentFillColorDefaultBrush}"/>
             </StackPanel>
             <Grid Grid.Row="2" ColumnSpacing="8">
                 <Grid.ColumnDefinitions>
@@ -134,6 +141,7 @@ class App(Application, IXamlMetadataProvider):
         self.shown_pending: list | None = None
         self.latencies: list[float] = []
         self.level_db = -120.0
+        self.level_text_at = 0.0
 
     # ----- start up -----------------------------------------------------------
 
@@ -148,7 +156,9 @@ class App(Application, IXamlMetadataProvider):
         self.view = SceneView(find("host").as_(FrameworkElement), find("panel").as_(SwapChainPanel))
         self.hud = find("hud").as_(TextBlock)
         self.status = find("status").as_(TextBlock)
-        self.level = find("level").as_(TextBlock)
+        self.level = find("level").as_(ProgressBar)
+        self.level_text = find("level_db").as_(TextBlock)
+        self.speaking = find("speaking").as_(UIElement)
         self.listen = find("listen").as_(ToggleSwitch)
         self.typed = find("typed").as_(TextBox)
         self.log = find("log").as_(StackPanel)
@@ -295,13 +305,25 @@ class App(Application, IXamlMetadataProvider):
             self.queue_text.text = ("Now: " + describe(pending)) if pending else "Waiting for a command"
         seg = self.listener.segmenter
         if seg is not None:
-            # Like a VU meter: up at once, back down at 30 dB/s, rather than
-            # flickering with every 30 ms frame.
-            self.level_db = max(seg.level_db, self.level_db - LEVEL_FALL_DB_S * dt)
-            bar = "█" * max(0, min(12, int((self.level_db + 70) / 4)))
-            text = f"{'● ' if seg.speaking else '  '}{bar:<12} {self.level_db:5.0f} dB"
-            if text != self.level.text:
-                self.level.text = text
+            self.show_level(seg.level_db, seg.speaking, dt, now)
+
+    def show_level(self, level_db: float, speaking: bool, dt: float, now: float) -> None:
+        """The microphone level, smoothed like a VU meter: it follows each 30 ms
+        frame quickly on the way up and slowly on the way down, so room noise and
+        the gaps between syllables don't make it flicker."""
+        tau = LEVEL_RISE_S if level_db > self.level_db else LEVEL_FALL_S
+        self.level_db += (max(level_db, -120.0) - self.level_db) * (1 - math.exp(-dt / tau))
+        value = min(max(self.level_db, self.level.minimum), self.level.maximum)
+        if abs(value - self.level.value) >= 0.25:
+            self.level.value = value
+        # The number only a few times a second: digits changing 60 times a
+        # second are unreadable.
+        if now - self.level_text_at >= 0.25:
+            self.level_text_at = now
+            self.level_text.text = f"{round(self.level_db)} dB"
+        opacity = 1.0 if speaking else 0.0
+        if self.speaking.opacity != opacity:
+            self.speaking.opacity = opacity
 
     # ----- events -------------------------------------------------------------
 
