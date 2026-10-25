@@ -26,6 +26,8 @@ import wave
 from typing import override
 
 import numpy as np
+from winrt.microsoft.ui.interop import get_window_from_window_id
+from winrt.microsoft.ui.windowing import OverlappedPresenter
 from winrt.microsoft.ui.xaml import (
     Application,
     DispatcherShutdownMode,
@@ -51,6 +53,7 @@ from winrt.windows.foundation import IStringable
 from winrt.windows.system import VirtualKey
 from winrt.windows.ui.xaml.interop import TypeKind, TypeName
 
+from . import placement
 from .grammar import describe, suggest
 from .loop import DispatcherQueueEventLoop
 from .main_window import MainWindow
@@ -134,6 +137,11 @@ class App(Application, IXamlMetadataProvider):
         self.window = self.ui.window
         self.window.title = "Pybricks voice driving · Whisper on the NPU"
         self.window.app_window.resize((1600, 1000))
+        # Where it was last time, but not when taking a screenshot, which
+        # should be the same size every run.
+        self.hwnd = get_window_from_window_id(self.window.app_window.id)
+        self.remember_placement = self.options.screenshot is None
+        maximize = self.remember_placement and placement.restore(self.hwnd)
         self.view = SceneView(self.ui.host, self.ui.panel, self.step)
 
         # Closing the window starts shutdown(), and the app exits once main() has
@@ -149,6 +157,8 @@ class App(Application, IXamlMetadataProvider):
         self.main_task = self.loop.create_task(self.main())
         self.main_task.add_done_callback(self.finished)
         self.window.activate()
+        if maximize:
+            self.window.app_window.presenter.as_(OverlappedPresenter).maximize()
 
     async def main(self) -> None:
         async with asyncio.TaskGroup() as tasks:
@@ -421,6 +431,11 @@ class App(Application, IXamlMetadataProvider):
         self.set_listening(self.ui.listen.is_on)
 
     def on_closed(self, sender: Object, args: WindowEventArgs) -> None:
+        if self.remember_placement:
+            try:
+                placement.save(self.hwnd)
+            except OSError as e:
+                log.warning("couldn't save the window's placement: %s", e)
         self.shutdown()
 
     def set_status(self, text: str) -> None:
