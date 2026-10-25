@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import logging
 import pathlib
 import queue
 import re
@@ -25,6 +26,8 @@ import numpy as np
 
 from .grammar import Conversation, Parse
 from .whisper import SAMPLE_RATE, Timing, Whisper
+
+log = logging.getLogger(__name__)
 
 # ----- voice activity ------------------------------------------------------
 
@@ -146,7 +149,7 @@ class Microphone:
         props = self.output.encoding_properties
         self.rate, self.channels = props.sample_rate, props.channel_count
         self.energy = np.zeros(self.channels)
-        print(f"microphone: {props.subtype} {self.rate} Hz × {self.channels} channels", flush=True)
+        log.info("microphone: %s %d Hz × %d channels", props.subtype, self.rate, self.channels)
         self.graph.add_quantum_started(self._quantum)
         self.graph.start()
 
@@ -305,9 +308,7 @@ class Listener:
     def _record(self, audio: np.ndarray, text: str) -> None:
         level = 20 * np.log10(np.sqrt(np.mean(audio * audio)) + 1e-9)
         peak = 20 * np.log10(np.abs(audio).max() + 1e-9)
-        print(
-            f"heard {len(audio) / SAMPLE_RATE:4.1f} s, rms {level:5.1f} / peak {peak:5.1f} dBFS: {text!r}", flush=True
-        )
+        log.info("heard %4.1f s, rms %5.1f / peak %5.1f dBFS: %r", len(audio) / SAMPLE_RATE, level, peak, text)
         if self.record_dir is None:
             return
         self.record_dir.mkdir(parents=True, exist_ok=True)

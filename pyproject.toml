@@ -56,10 +56,17 @@ select = [
     "B",       # bugbear
     "SIM",     # simplify
     "RUF",     # ruff's own
+    "T20",     # no print(): the app logs
+    "G",       # logging calls let logging do the formatting
 ]
 ignore = [
     "RUF001", "RUF002", "RUF003",  # ×, °, “” and … are meant in user-facing text and comments
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Command-line scripts, where printing is the point.
+"tools/*" = ["T20"]
+"spikes/*" = ["T20"]
 
 [tool.pyright]
 pythonVersion = "3.14"

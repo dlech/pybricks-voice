@@ -14,10 +14,10 @@ import argparse
 import asyncio
 import ctypes
 import ctypes.wintypes
+import logging
 import math
 import pathlib
 import time
-import traceback
 import wave
 from typing import override
 from xml.sax.saxutils import quoteattr
@@ -59,6 +59,8 @@ from .robot import SimRobot
 from .scene import SceneView, use_d3d12
 from .speech import Heard, Listener, Microphone, Segmenter
 from .whisper import SAMPLE_RATE
+
+log = logging.getLogger(__name__)
 
 # The level meter: how quickly it follows the microphone up and down, in seconds.
 LEVEL_RISE_S, LEVEL_FALL_S = 0.05, 0.35
@@ -437,21 +439,25 @@ class App(Application, IXamlMetadataProvider):
 
     def finished(self, task: asyncio.Task[None]) -> None:
         if not task.cancelled() and (error := task.exception()) is not None:
-            traceback.print_exception(error)
+            log.error("the app stopped on an error", exc_info=error)
         gaps = np.array(self.tick_gaps[30:]) * 1000  # skip start-up
         if len(gaps):
-            print(
-                f"UI timer (16 ms): median gap {np.median(gaps):.1f} ms, p99 {np.percentile(gaps, 99):.1f} ms, "
-                f"max {gaps.max():.1f} ms, {int((gaps > 50).sum())} gaps over 50 ms",
-                flush=True,
+            log.info(
+                "UI timer (16 ms): median gap %.1f ms, p99 %.1f ms, max %.1f ms, %d gaps over 50 ms",
+                np.median(gaps),
+                np.percentile(gaps, 99),
+                gaps.max(),
+                (gaps > 50).sum(),
             )
         if self.latencies:
-            pause = Segmenter.END_MS
-            print(
-                f"end of speech -> commands: median {pause + np.median(self.latencies):.0f} ms "
-                f"({pause} ms pause + {np.median(self.latencies):.0f} ms), "
-                f"max {pause + max(self.latencies):.0f} ms over {len(self.latencies)} utterances",
-                flush=True,
+            pause, median = Segmenter.END_MS, float(np.median(self.latencies))
+            log.info(
+                "end of speech -> commands: median %.0f ms (%d ms pause + %.0f ms), max %.0f ms over %d utterances",
+                pause + median,
+                pause,
+                median,
+                pause + max(self.latencies),
+                len(self.latencies),
             )
         self.microphone.stop()
         self.listener.close()
@@ -489,9 +495,15 @@ def main() -> None:
     )
     parser.add_argument("--no-mic", action="store_true", help="don't open the microphone")
     parser.add_argument("--record", type=pathlib.Path, help="save every utterance (WAV + text) to this folder")
+    parser.add_argument("--debug", action="store_true", help="log at DEBUG rather than INFO")
     options = parser.parse_args()
 
-    print(f"3D view on {use_d3d12()} (D3D12)", flush=True)
+    logging.basicConfig(
+        level=logging.DEBUG if options.debug else logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+    log.info("3D view on %s (D3D12)", use_d3d12())
     # python.exe declares no DPI awareness, so Windows would stretch the window.
     ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))  # per monitor v2
     init_apartment(ApartmentType.SINGLE_THREADED)
