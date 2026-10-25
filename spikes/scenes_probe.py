@@ -19,7 +19,6 @@ from winrt.microsoft.ui.xaml.markup import IXamlMetadataProvider
 from winrt.microsoft.ui.xaml.xamltypeinfo import XamlControlsXamlMetaDataProvider
 from winrt.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import initialize
 from winrt.runtime import ApartmentType, init_apartment
-from winrt.windows.graphics import SizeInt32
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from scenes_spike import Mesh, Scene, box
@@ -36,7 +35,7 @@ class App(Application, IXamlMetadataProvider):
     def _on_launched(self, args):
         self.resources.merged_dictionaries.append(XamlControlsResources())
         self.window = Window()
-        self.window.app_window.resize(SizeInt32(1200, 500))
+        self.window.app_window.resize((1200, 500))
         host = Grid()
         self.window.content = host
         compositor = ElementCompositionPreview.get_element_visual(host).compositor
@@ -44,9 +43,8 @@ class App(Application, IXamlMetadataProvider):
         container.size = (1200, 440)
         backdrop = compositor.create_sprite_visual()
         backdrop.size = (1200, 440)
-        from winrt.windows.ui import Color
 
-        backdrop.brush = compositor.create_color_brush(Color(255, 230, 230, 230))
+        backdrop.brush = compositor.create_color_brush((255, 230, 230, 230))
         container.children.insert_at_bottom(backdrop)
         self.keep = []
         for i, (z, tilt) in enumerate(CASES):

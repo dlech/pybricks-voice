@@ -44,7 +44,6 @@ from winrt.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import
 from winrt.runtime import ApartmentType, init_apartment
 from winrt.windows.foundation import MemoryBuffer
 from winrt.windows.foundation.numerics import Matrix4x4
-from winrt.windows.graphics import SizeInt32
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from pybricks_voice.grammar import parse
@@ -316,7 +315,7 @@ class App(Application, IXamlMetadataProvider):
         self.resources.merged_dictionaries.append(XamlControlsResources())
         self.window = Window()
         self.window.title = "Composition Scenes spike"
-        self.window.app_window.resize(SizeInt32(1200, 800))
+        self.window.app_window.resize((1200, 800))
         self.host = Grid()
         self.window.content = self.host
 

@@ -44,7 +44,6 @@ from winrt.microsoft.ui.xaml.xamltypeinfo import XamlControlsXamlMetaDataProvide
 from winrt.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import InitializeOptions, initialize
 from winrt.runtime import ApartmentType, init_apartment
 from winrt.system import Array, Object
-from winrt.windows.graphics import SizeInt32
 from winrt.windows.system import VirtualKey
 from winrt.windows.ui.xaml.interop import TypeKind, TypeName
 
@@ -92,7 +91,7 @@ class App(Application, IXamlMetadataProvider):
         self.ui = MainWindow(self)
         self.window = self.ui.window
         self.window.title = "Pybricks voice driving · Whisper on the NPU"
-        self.window.app_window.resize(SizeInt32(1600, 1000))
+        self.window.app_window.resize((1600, 1000))
         self.view = SceneView(self.ui.host, self.ui.panel, self.step)
 
         # Closing the window starts shutdown(), and the app exits once main() has

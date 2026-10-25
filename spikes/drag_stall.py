@@ -35,7 +35,6 @@ from winrt.microsoft.ui.xaml import Application, LaunchActivatedEventArgs, Windo
 from winrt.microsoft.ui.xaml.controls import TextBlock
 from winrt.microsoft.windows.applicationmodel.dynamicdependency.bootstrap import InitializeOptions, initialize
 from winrt.runtime import ApartmentType, init_apartment
-from winrt.windows.graphics import SizeInt32
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from pybricks_voice import loop as guest
@@ -205,7 +204,7 @@ class App(Application):
         self.text = TextBlock()
         self.text.font_size = 32
         self.window.content = self.text
-        self.window.app_window.resize(SizeInt32(900, 600))
+        self.window.app_window.resize((900, 600))
         self.hwnd = get_window_from_window_id(self.window.app_window.id)
         for kind, proc in ((WH_GETMESSAGE, on_get_message), (WH_CALLWNDPROC, on_call_wndproc)):
             hooks.append(user32.SetWindowsHookExW(kind, proc, None, self.ui_tid))
